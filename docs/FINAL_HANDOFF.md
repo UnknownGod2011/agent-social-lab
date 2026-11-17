@@ -44,7 +44,11 @@ Backend coverage includes lifecycle/role/schema checks; matching starting hashes
 
 The five-day A/B/C integration test reached 12/12 milestones in every arm, with 120 work turns per arm, 20 private B notes and 20 C chat messages. The three-day browser-driven mock run also reached 12/12 in A and C, with equal work opportunities. These are synthetic fixture outcomes, not evidence about real agent cooperation.
 
+A separate fresh Git worktree, with no `.env` and zero configured provider keys, completed a three-day A/C run: 12/12 milestones in each department, 156 synthetic calls and zero network model calls. This reused the installed Python runtime/dependencies but imported application code and created its database entirely inside the fresh checkout.
+
 Browser acceptance was performed against the rendered app, not only a compiled bundle. The reusable `output/playwright/ui-smoke.js` script checks start/pause/resume, all six notebook tabs, no-match search, department filtering, historical replay at event zero, actual JSONL download, compare/settings/usage preview, desktop/mobile page overflow and reduced motion. A prior run returned `errors: []`, both overflow flags false, and reduced motion true. Screenshots are in `output/playwright/`.
+
+The final `ui-settings.js` walkthrough also passed: optional B rendered with private journal entries; advance-day paused exactly after day one; cloning produced a fresh ready run; stop was terminal; selecting estimated cost in the comparison worked; the comparison page had no mobile page overflow. Initial script locator/waiting issues were corrected in the browser test, rather than treating them as successful checks.
 
 ## Live Gemini evidence
 
