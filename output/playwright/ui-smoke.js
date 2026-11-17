@@ -1,0 +1,52 @@
+async (page) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("http://127.0.0.1:8000");
+  await page.getByRole("button", {name: "Reset demo", exact: true}).waitFor();
+  await page.getByRole("button", {name: "Reset demo", exact: true}).click();
+  await page.getByRole("button", {name: "Start experiment", exact: true}).waitFor();
+  const id = await page.getByRole("combobox", {name: "Select experiment run"}).inputValue();
+  await page.getByRole("button", {name: "Start experiment", exact: true}).click();
+  await page.getByRole("button", {name: "Pause", exact: true}).waitFor();
+  await page.waitForTimeout(1400);
+  await page.getByRole("button", {name: "Pause", exact: true}).click();
+  await page.getByRole("button", {name: "Resume", exact: true}).waitFor();
+  await page.getByRole("textbox", {name: "Search recorded events"}).fill("no-match-should-be-empty");
+  if (await page.locator(".event-row").count()) throw new Error("Search did not filter events");
+  await page.getByRole("textbox", {name: "Search recorded events"}).fill("");
+  await page.getByRole("combobox", {name: "Filter department"}).selectOption("C");
+  const rows = await page.locator(".event-row").allTextContents();
+  if (rows.some(text => text.includes("Dept. A"))) throw new Error("Department filter mixed conditions");
+  await page.getByRole("combobox", {name: "Filter department"}).selectOption("all");
+  for (const tab of ["Conversations", "Goals", "Metrics", "Memory", "Replay", "Activity"]) {
+    await page.getByRole("tab", {name: tab, exact: true}).click();
+    if (await page.getByRole("tab", {name: tab, exact: true}).getAttribute("aria-selected") !== "true") throw new Error("Tab not selected: " + tab);
+  }
+  await page.getByRole("tab", {name: "Replay", exact: true}).click();
+  await page.getByRole("slider", {name: "Replay event", exact: true}).fill("0");
+  await page.getByText("Viewing recorded state at event #0.", {exact: false}).waitFor();
+  await page.getByRole("button", {name: "Return to live", exact: true}).first().click();
+  await page.getByRole("button", {name: "Export", exact: true}).click();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("link", {name: "Complete event log JSONL"}).click();
+  const download = await downloading;
+  await download.saveAs("output/playwright/ui-events.jsonl");
+  await page.getByRole("button", {name: "Compare", exact: true}).click();
+  await page.getByRole("heading", {name: "Did the break make a difference?"}).waitFor();
+  await page.getByRole("button", {name: "Experiment", exact: true}).click();
+  await page.getByRole("button", {name: "Preview maximum usage", exact: true}).click();
+  await page.getByText("Logical calls", {exact: true}).waitFor();
+  await page.getByRole("button", {name: "Live lab", exact: true}).last().click();
+  await page.screenshot({path: "output/playwright/desktop.png", fullPage: true});
+  const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  await page.setViewportSize({width: 390, height: 844});
+  await page.screenshot({path: "output/playwright/mobile.png", fullPage: true});
+  const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  if (desktopOverflow || mobileOverflow) throw new Error("Page overflow: " + JSON.stringify({desktopOverflow, mobileOverflow}));
+  await page.emulateMedia({reducedMotion: "reduce"});
+  const reducedMotion = await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  await page.setViewportSize({width: 1440, height: 1000});
+  await page.getByRole("button", {name: "Resume", exact: true}).click();
+  return {id, errors, desktopOverflow, mobileOverflow, reducedMotion, export: download.suggestedFilename(), controls: "start, pause, resume", tabs: 6, search: "passed", replay: "event zero reconstructed"};
+}

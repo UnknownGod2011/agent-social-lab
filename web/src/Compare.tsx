@@ -1,0 +1,459 @@
+import { useEffect, useState } from "react";
+import { api } from "./api";
+import type { Arm, Run } from "./types";
+import { ARMS, money, nice, num } from "./types";
+import { CooperationGraph, MetricsView } from "./Inspector";
+import Icon from "./Icon";
+
+type MetricSummary = { n: number; mean: number | null; sd: number | null };
+type Summary = {
+  configuration_group: string;
+  provider: string;
+  departments: Partial<
+    Record<
+      Arm,
+      {
+        n: number;
+        mean_milestones: number | null;
+        sd_milestones: number | null;
+        metrics?: Record<string, MetricSummary>;
+      }
+    >
+  >;
+};
+export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
+  const [selected, setSelected] = useState<string[]>([run.id]);
+  const [summary, setSummary] = useState<Summary[]>([]);
+  const [comparison, setComparison] = useState<Run[]>([run]);
+  const [parameter, setParameter] = useState("completed");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!selected.length) {
+      setSummary([]);
+      setComparison([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api<{ runs: Run[]; summary: Summary[] }>(
+      `/compare?ids=${selected.join(",")}`,
+    )
+      .then((r) => {
+        if (!cancelled) {
+          setSummary(r.summary);
+          setComparison(r.runs);
+          setError("");
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, run]);
+  const arms = run.config.arms;
+  const completion = (arm: Arm) => {
+    const m = run.metrics?.departments[arm];
+    return m ? (m.completed / (m.total || 1)) * 100 : 0;
+  };
+  const tokens = (arm: Arm) => {
+    const m = run.metrics?.departments[arm];
+    return typeof m?.total_tokens === "number"
+      ? m.total_tokens
+      : (m?.input_tokens ?? 0) + (m?.output_tokens ?? 0);
+  };
+  const maxTokens = Math.max(1, ...arms.map(tokens));
+  const metricKeys = [
+    ...new Set([
+      "completed",
+      ...summary.flatMap((group) =>
+        Object.values(group.departments).flatMap((department) =>
+          Object.keys(department?.metrics ?? {}),
+        ),
+      ),
+    ]),
+  ];
+  const label = (field: string) =>
+    ({
+      completed: "Milestones passed",
+      estimated_cost_usd: "Estimated cost (USD)",
+      actual_cost_usd: "Provider-reported cost (USD)",
+      duplicate_claims_prevented: "Duplicate claims prevented",
+    })[field] ?? nice(field);
+  const format = (value: number) =>
+    parameter.includes("cost")
+      ? money(value)
+      : parameter === "completion"
+        ? `${(value * 100).toFixed(1)}%`
+        : num(value);
+  const stats = (mean: number | null, sd: number | null) =>
+    mean === null
+      ? "No reported data"
+      : `${format(mean)}${sd === null ? " · variability unavailable" : ` ± ${format(sd)} SD`}`;
+  return (
+    <div className="compare-page">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">SIDE BY SIDE, WITH CONTEXT</span>
+          <h2>Did the break make a difference?</h2>
+          <p>
+            Compare objective outcomes, resource use and observable cooperation.
+          </p>
+        </div>
+        <span className="badge muted">
+          {run.config.provider === "mock"
+            ? "SYNTHETIC DEMONSTRATION"
+            : "LIVE MODEL DATA"}
+        </span>
+      </div>
+      <div className="comparison-notice">
+        <Icon name="flask" size={21} />
+        <div>
+          <strong>A dashboard is not a scientific conclusion.</strong>
+          <p>
+            Sample counts refer to team runs, not individual agents. A handful
+            of runs cannot establish an effect. Synthetic mock data proves only
+            that the system works.
+          </p>
+        </div>
+      </div>
+      <div className="compare-charts">
+        <section className="panel chart-card">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">PRIMARY OUTCOME</span>
+              <h3>Project completion</h3>
+            </div>
+            <Icon name="board" size={18} />
+          </div>
+          <div className="bar-chart">
+            {arms.map((a) => (
+              <div className="bar-row" key={a}>
+                <span className="arm-tag" style={{ color: ARMS[a].color }}>
+                  {a}
+                </span>
+                <div>
+                  <div className="bar-label">
+                    <span>{ARMS[a].title}</span>
+                    <strong>
+                      {run.metrics?.departments[a]?.completed ?? 0} /{" "}
+                      {run.metrics?.departments[a]?.total ?? 12}
+                    </strong>
+                  </div>
+                  <div className="chart-track">
+                    <i
+                      style={{
+                        width: `${completion(a)}%`,
+                        background: ARMS[a].color,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="chart-footnote">
+            Machine-checked milestones · current run · n = 1 per condition
+          </p>
+        </section>
+        <section className="panel chart-card">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">RESOURCE USE</span>
+              <h3>The cost of conversation</h3>
+            </div>
+            <Icon name="chart" size={18} />
+          </div>
+          <div className="bar-chart">
+            {arms.map((a) => (
+              <div className="bar-row" key={a}>
+                <span className="arm-tag" style={{ color: ARMS[a].color }}>
+                  {a}
+                </span>
+                <div>
+                  <div className="bar-label">
+                    <span>{num(tokens(a))} tokens</span>
+                    <strong>
+                      {money(run.metrics?.departments[a]?.estimated_cost_usd)}
+                    </strong>
+                  </div>
+                  <div className="chart-track">
+                    <i
+                      style={{
+                        width: `${(tokens(a) / maxTokens) * 100}%`,
+                        background: ARMS[a].color,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="chart-footnote">
+            Estimated USD from token rates. Provider-reported cost shown
+            separately below.
+          </p>
+        </section>
+      </div>
+      <div className="comparison-bottom">
+        <section className="panel compare-table">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">CURRENT PAIRED RUN</span>
+              <h3>All recorded parameters</h3>
+            </div>
+            <a
+              className="text-button"
+              href={`/api/runs/${run.id}/export/metrics.csv`}
+              download
+            >
+              <Icon name="download" size={14} /> CSV
+            </a>
+          </div>
+          <MetricsView run={run} />
+        </section>
+        <section className="panel cooperation-panel">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">BEHAVIORAL PROXIES</span>
+              <h3>Cooperation, observed</h3>
+            </div>
+            <Icon name="link" size={18} />
+          </div>
+          <p>
+            Edges represent validated help, handoffs or repairs. No sentiment or
+            “trust score” is inferred.
+          </p>
+          {arms.map((a) => (
+            <div className="graph-section" key={a}>
+              <div>
+                <span className="arm-tag" style={{ color: ARMS[a].color }}>
+                  {a}
+                </span>
+                <strong>{ARMS[a].title}</strong>
+              </div>
+              <CooperationGraph
+                edges={
+                  (run.metrics?.departments[a]?.cooperation_edges ?? []) as {
+                    source: string;
+                    target: string;
+                    count: number;
+                  }[]
+                }
+                arm={a}
+              />
+            </div>
+          ))}
+        </section>
+      </div>
+      <section className="panel replications-panel">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">ACROSS RUNS</span>
+            <h3>Replications & variability</h3>
+          </div>
+          {loading && <span className="help-text">Loading recorded runs…</span>}
+        </div>
+        <p className="help-text">
+          Select runs to inspect every parameter, means and sample standard
+          deviation. The backend groups compatible configurations; only
+          completed runs enter summaries. Repeating one deterministic seed does
+          not create independent evidence.
+        </p>
+        <div className="run-picks">
+          {runs.map((r) => (
+            <label key={r.id}>
+              <input
+                type="checkbox"
+                checked={selected.includes(r.id)}
+                disabled={!selected.includes(r.id) && selected.length >= 20}
+                title={
+                  selected.length >= 20
+                    ? "Compare up to 20 recorded runs at a time"
+                    : undefined
+                }
+                onChange={(e) =>
+                  setSelected(
+                    e.target.checked
+                      ? [...selected, r.id]
+                      : selected.filter((id) => id !== r.id),
+                  )
+                }
+              />
+              <span>
+                {r.config.name}
+                <small>
+                  {r.config.provider} · seed {r.config.seed} · {r.status}
+                </small>
+              </span>
+            </label>
+          ))}
+        </div>
+        {!!comparison.length && (
+          <>
+            <div className="matrix-heading">
+              <span className="eyebrow">
+                SELECTED RUNS · CONFIGURATION & RECORDED OUTCOMES
+              </span>
+              <span>Scroll horizontally for all parameters →</span>
+            </div>
+            <div
+              className="run-matrix-scroll"
+              tabIndex={0}
+              role="region"
+              aria-label="Selected run comparison table, horizontally scrollable"
+            >
+              <table className="run-matrix">
+                <thead>
+                  <tr>
+                    <th>Run / condition</th>
+                    <th>Provider / model</th>
+                    <th>Seed</th>
+                    <th>Schedule / days</th>
+                    <th>Work rounds / block</th>
+                    <th>Hard budget caps</th>
+                    <th>Milestones</th>
+                    <th>API attempts</th>
+                    <th>Total tokens</th>
+                    <th>Estimated USD</th>
+                    <th>Provider-reported USD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparison.flatMap((record) =>
+                    record.config.arms.map((arm) => {
+                      const m = record.metrics?.departments[arm];
+                      return (
+                        <tr key={`${record.id}-${arm}`}>
+                          <td>
+                            <strong>{record.config.name}</strong>
+                            <span>
+                              {record.id.slice(0, 8)} · Dept. {arm} ·{" "}
+                              {nice(record.status)}
+                            </span>
+                          </td>
+                          <td>
+                            {record.config.provider}
+                            <span>{record.config.model}</span>
+                          </td>
+                          <td>{record.config.seed}</td>
+                          <td>
+                            {nice(record.config.scheduler_mode)} ·{" "}
+                            {record.config.days} days
+                            <span>Arms {record.config.arms.join(" / ")}</span>
+                          </td>
+                          <td>
+                            {record.config.work_rounds}
+                            <span>
+                              Break every {record.config.talk_frequency} day(s)
+                              · {record.config.break_length} min
+                            </span>
+                          </td>
+                          <td>
+                            {num(record.config.max_calls)} attempts
+                            <span>
+                              {num(record.config.max_tokens)} tokens ·{" "}
+                              {money(record.config.max_cost_usd)}
+                            </span>
+                          </td>
+                          <td>
+                            {num(m?.completed)} / {num(m?.total)}
+                          </td>
+                          <td>{num(m?.model_calls)}</td>
+                          <td>{num(m?.total_tokens)}</td>
+                          <td>{money(m?.estimated_cost_usd)}</td>
+                          <td>{money(m?.actual_cost_usd)}</td>
+                        </tr>
+                      );
+                    }),
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <details className="configuration-details">
+              <summary>Inspect full recorded configurations and hashes</summary>
+              <p className="help-text">
+                Includes role prompts, model, seed, schedule, limits and all
+                condition settings. API credentials are never part of a run
+                configuration.
+              </p>
+              <pre>
+                {JSON.stringify(
+                  comparison.map((record) => ({
+                    run_id: record.id,
+                    status: record.status,
+                    config_hash: record.config_hash,
+                    initial_state_hash: record.initial_state_hash,
+                    config: record.config,
+                  })),
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          </>
+        )}
+        {error && <div className="error-box">{error}</div>}
+        <label className="comparison-parameter">
+          Aggregate parameter
+          <select
+            aria-label="Parameter to compare across runs"
+            value={parameter}
+            onChange={(e) => setParameter(e.target.value)}
+          >
+            {metricKeys.map((key) => (
+              <option key={key} value={key}>
+                {label(key)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {summary.map((group) => (
+          <div key={group.configuration_group} className="replication-group">
+            <span className="section-label">
+              {group.provider.toUpperCase()} · CONFIG{" "}
+              {group.configuration_group.slice(0, 10)}
+            </span>
+            <div className="replication-stats">
+              {(Object.keys(group.departments) as Arm[]).map((a) => {
+                const department = group.departments[a]!;
+                const s =
+                  department.metrics?.[parameter] ??
+                  (parameter === "completed"
+                    ? {
+                        n: department.n,
+                        mean: department.mean_milestones,
+                        sd: department.sd_milestones,
+                      }
+                    : { n: 0, mean: null, sd: null });
+                return (
+                  <div key={a}>
+                    <span style={{ color: ARMS[a].color }}>Department {a}</span>
+                    <strong>{stats(s.mean, s.sd)}</strong>
+                    <small>
+                      {label(parameter)} · n = {s.n} completed team runs with
+                      data
+                    </small>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div className="inline-note">
+          <Icon name="info" size={15} />
+          <span>
+            No p-values are computed for demonstration data. Missing provider
+            charges stay unreported. Live studies need predeclared outcomes,
+            sufficient independent replications and a justified analysis plan.
+          </span>
+        </div>
+      </section>
+    </div>
+  );
+}

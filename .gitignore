@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+data/
+web/node_modules/
+web/dist/
+*.log
+.playwright-cli/
+.playwright-mcp/
+web/*.tsbuildinfo
+output/playwright/ui-events.jsonl
