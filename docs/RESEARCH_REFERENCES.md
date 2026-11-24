@@ -1,5 +1,7 @@
 # Research references and implementation boundaries
 
+The [current literature review and study protocol](RESEARCH_PROTOCOL.md) covers the 2026 CSCW hidden-profile experiments, grounding theory, the original human decision-making experiments, and the author-hosted AMJ paper. The [dialogue methods](HUMAN_DIALOGUE.md) document the human corpus and held-out validation. The [DeepSeek price table](https://api-docs.deepseek.com/quick_start/pricing/) informed model aliases and conservative peak-rate budgeting.
+
 Inspected on 17 November 2026. These sources informed a small independent implementation; no research framework, town engine, or benchmark package was copied into this project. Repository paths below identify the architecture actually inspected, rather than implying that its experimental results apply here.
 
 | Original source | Inspected material | Pattern used in this MVP |

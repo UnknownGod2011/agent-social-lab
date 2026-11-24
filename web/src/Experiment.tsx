@@ -27,6 +27,8 @@ export default function Experiment({
     ...run?.config,
     role_prompts: { ...run?.config.role_prompts },
     paid_confirmed: false,
+    environment: run?.config.environment ?? "supplier_selection_v1",
+    dialogue_protocol: run?.config.dialogue_protocol ?? "topical_chat_v1",
   });
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -41,6 +43,21 @@ export default function Experiment({
   const providers = health?.providers as
     Record<string, Record<string, unknown>> | undefined;
   const keys = providers?.gemini?.configured_keys;
+  const provider = providers?.[config.provider];
+  function selectProvider(name: string) {
+    const defaultModel = providers?.[name]?.model;
+    const model =
+      typeof defaultModel === "string"
+        ? defaultModel
+        : name === "deepseek"
+          ? "deepseek-flash"
+          : name === "openai"
+            ? ""
+            : DEFAULT_CONFIG.model;
+    setConfig((c) => ({ ...c, provider: name, model, paid_confirmed: false }));
+    setPreview(null);
+    setProviderCheck(null);
+  }
   async function estimate() {
     setPreviewBusy(true);
     setError("");
@@ -56,6 +73,7 @@ export default function Experiment({
     setProviderCheck("Checking provider connection…");
     try {
       const result = await api<Record<string, unknown>>("/providers/check", {
+        provider: config.provider,
         model: config.model,
       });
       setProviderCheck(JSON.stringify(result, null, 2));
@@ -95,7 +113,7 @@ export default function Experiment({
               <span className="step-number">01</span>
               <div>
                 <h3>Experiment setup</h3>
-                <p>A miniature task-board project, across several days.</p>
+                <p>Choose the work sample and the break treatment.</p>
               </div>
             </div>
             <label className="field full">
@@ -106,6 +124,51 @@ export default function Experiment({
                 value={config.name}
                 onChange={(e) => update("name", e.target.value)}
               />
+            </label>
+            <label className="field">
+              Work sample
+              <select
+                value={config.environment}
+                onChange={(e) =>
+                  update("environment", e.target.value as Config["environment"])
+                }
+              >
+                <option value="supplier_selection_v1">
+                  Supplier selection · scored team decisions
+                </option>
+                <option value="task_board_v1">
+                  Task board · rule-based milestones
+                </option>
+              </select>
+              <small>
+                {config.environment === "supplier_selection_v1"
+                  ? "Each role has a private scorecard. Teams pool information and submit a supplier choice for each tender."
+                  : "Each milestone passes when its submitted feature rules meet the task checks."}
+              </small>
+            </label>
+            <label className="field">
+              Conversation protocol
+              <select
+                value={config.dialogue_protocol}
+                onChange={(e) =>
+                  update(
+                    "dialogue_protocol",
+                    e.target.value as Config["dialogue_protocol"],
+                  )
+                }
+              >
+                <option value="topical_chat_v1">
+                  Topical-Chat · human turn patterns
+                </option>
+                <option value="catalog_v1">
+                  Fixed utterances · legacy protocol
+                </option>
+              </select>
+              <small>
+                {config.dialogue_protocol === "topical_chat_v1"
+                  ? "Safe, authored options follow turn patterns measured from human conversations."
+                  : "Each break turn selects a standalone phrase from the original catalogue."}
+              </small>
             </label>
             <div className="field-grid">
               <label className="field">
@@ -191,10 +254,11 @@ export default function Experiment({
               Provider
               <select
                 value={config.provider}
-                onChange={(e) => update("provider", e.target.value)}
+                onChange={(e) => selectProvider(e.target.value)}
               >
                 <option value="mock">Mock · deterministic offline demo</option>
                 <option value="gemini">Gemini · live model</option>
+                <option value="deepseek">DeepSeek · live model</option>
                 <option value="openai">OpenAI compatible · live model</option>
               </select>
             </label>
@@ -214,27 +278,32 @@ export default function Experiment({
                     <strong>
                       {config.provider === "gemini"
                         ? `${typeof keys === "number" ? keys : "—"} keys configured in server pool`
-                        : "Server-side credentials"}
+                        : config.provider === "deepseek"
+                          ? provider?.configured
+                            ? "DeepSeek credential configured"
+                            : "DeepSeek credential unavailable"
+                          : "Server-side credentials"}
                     </strong>
                     <p>
-                      Bounded retries, cooldown and rotation. Shared project
-                      limits still apply.
+                      {config.provider === "gemini"
+                        ? "Bounded retries and cooldowns apply across the key pool."
+                        : "Live requests use the server credential and the frozen run budget."}
                     </p>
                   </div>
                   <button
                     type="button"
                     className="text-button"
                     onClick={check}
-                    disabled={config.provider !== "gemini"}
+                    disabled={config.provider === "openai"}
                     title={
-                      config.provider !== "gemini"
-                        ? "Connection preflight is available for Gemini only; configure the OpenAI-compatible adapter server-side."
-                        : "Check the selected Gemini model and configured credential pool"
+                      config.provider === "openai"
+                        ? "Preflight is unavailable for this configurable endpoint."
+                        : "Check the selected model with the server credential"
                     }
                   >
-                    {config.provider === "gemini"
-                      ? "Check"
-                      : "Gemini check only"}
+                    {config.provider === "openai"
+                      ? "Preflight unavailable"
+                      : "Check"}
                   </button>
                 </div>
                 {providerCheck && (
@@ -318,8 +387,8 @@ export default function Experiment({
                   Explicitly allow paid model usage up to the configured USD
                   cap.
                   <small>
-                    Free-tier project designated by researcher; provider billing
-                    is not verified. Paid use requires confirmation.
+                    The server reserves usage before each request. The displayed
+                    cost is an estimate.
                   </small>
                 </span>
               </label>

@@ -1,5 +1,7 @@
 # Beyond Task Talk: experimental design
 
+The registered supplier-selection study, control conditions, power planning, missing-data policy and manuscript outline are described in the [research protocol](RESEARCH_PROTOCOL.md). The following design describes the original task-board instrument.
+
 ## Question and conditions
 
 Does scheduled non-task interaction change objective task outcomes or observable cooperation in otherwise matched LLM teams? The software demonstrates and records an experiment; it does not establish that AI agents experience friendship, trust, fatigue or emotion.

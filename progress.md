@@ -1,5 +1,14 @@
 # Beyond Task Talk Lab progress
 
+## Research release · 24 November 2026
+
+- Completed the scored procurement work sample, prospective A/B/C registry, corpus-informed dialogue, break-memory ablations, DeepSeek integration and the revised experiment workbench.
+- Verified 67 backend tests, production frontend build, fresh keyless install and completed run, desktop/mobile Chromium checks and standalone evidence verification.
+- Completed the final three-day DeepSeek calibration with 240 calls, 174,371 tokens, $0.03421758 estimated peak-rate cost and 1,740 audited events.
+- The application is ready for further research pilots. A powered confirmatory cohort and human-rated dialogue validation remain research work.
+
+## Historical task-board release
+
 - Completed: research, typed A/B/C engine, objective task world, append-only SQLite, replay, resumable virtual/calendar scheduler, hard budgets, Gemini pool, optional compatible adapter, responsive console, all comparison/export controls.
 - Verified: offline 3-day A/C run and 5-day A/B/C tests; provider HTTP tests; real browser start/pause/resume, six tabs, filters/search, replay and download; desktop/mobile no overflow and reduced motion.
 - Live: all ten keys passed model-list authentication; bounded generation succeeded. A complete three-day Gemini paired run recorded 164 attempts, 246,533 tokens and $0.0829579 paid-equivalent estimate. Provider charges are unknown; objective performance was low (A 0/12, C 1/12), not a scientific finding.

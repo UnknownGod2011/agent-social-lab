@@ -1,8 +1,8 @@
 # Beyond Task Talk Lab
 
-A local research console comparing four-agent departments working on the same persistent task-board project. Watch original SVG creatures move between desks, a shared table, and beds while the server records their actual decisions, conversations, milestones, usage, and replay history.
+A local laboratory for testing whether a non-task conversation changes the subsequent decisions of four-agent teams. Compare silent breaks, private writing and shared conversation using human-dialogue-informed stimuli, distributed supplier evidence, recorded model calls and independently re-scorable awards. The original rule-based task board remains available in Experiment.
 
-**This is a structured task-board simulation, not executable code generation. Mock runs are synthetic demonstrations, not evidence that small talk improves performance. Cooperation measures are behavioral proxies, not feelings or friendship.**
+**Read the [research protocol and literature review](docs/RESEARCH_PROTOCOL.md)** for the hypotheses, choice of task, design, analysis, power planning and paper outline.
 
 ## Run locally
 
@@ -18,17 +18,31 @@ Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)**. The command installs th
 .\start.ps1
 ```
 
-Mock mode needs no keys or internet access after dependency installation. The SQLite database is created automatically at `data/lab.sqlite3`; it survives browser refreshes and server restarts. Keep the terminal running. Stop the server with Ctrl+C. Run only one Uvicorn worker for this local MVP.
+Mock mode works offline after dependency installation. SQLite stores the record in `data/lab.sqlite3`. Keep the server running with one Uvicorn worker. Ctrl+C stops it.
 
-![Desktop research console](output/playwright/desktop.png)
+![Desktop research console replaying a recorded break](output/playwright/research-break.png)
 
-The creatures blink and breathe decoratively; location changes, work activity, speech and sleep follow recorded engine state. A compact [mobile screenshot](output/playwright/mobile.png) shows the stacked layout.
+The creatures blink and breathe between actions. Location changes, work activity, speech, expressions and sleep follow recorded engine state. See the [desktop study registry](output/playwright/study-registry.png) and [mobile registry](output/playwright/study-mobile.png).
 
 For manual setup on another platform, create a Python 3.11+ virtual environment, install `requirements.txt`, run `npm --prefix web install` and `npm --prefix web run build`, then start `python -m uvicorn api.main:app --host 127.0.0.1 --port 8000` from the repository root. Python needs IANA timezone data, supplied by the `tzdata` dependency.
 
-## Try the experiment
+## Run a registered study
 
-1. Start the default **MOCK / DEMONSTRATION** run. Departments A and C begin with identical task-state hashes and four matched roles: Coordinator, Builder, Verifier, and Integrator.
+Open **[Studies](http://127.0.0.1:8000/#studies)**. Register a provider, a model, distinct case seeds, days, work rounds, memory policy and budgets. Registration atomically allocates all A/B/C blocks. Open a block to start it. Goals lets you inspect the scorecards from each role's perspective, and Message paths links a handoff to its recorded event. Compare shows points, coverage, tokens, timing and costs. The mock provider gives a deterministic reference policy. Live cohorts record the actual model's actions and may include low or zero scores.
+
+Open a study's JSON to obtain its full ID. For batch execution or archival:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/study_packet.py run STUDY_ID
+.\.venv\Scripts\python.exe scripts/study_packet.py export STUDY_ID evidence.zip
+.\.venv\Scripts\python.exe scripts/study_packet.py verify evidence.zip
+```
+
+For a registered live study, append `--live` to the **run** command. The sequential runner follows existing allocations and stops at an unresolved or terminal incomplete block. The packet includes the manifest, frozen configuration, private evaluator casebooks, event logs, and case-level CSV. Verification uses Python's standard library and can run on a separate computer without the application or provider credentials.
+
+## Try the original task-board environment
+
+1. In Experiment, select the task board and Mock, then create and start a fresh run. Departments A and C begin with identical task-state hashes and four matched roles.
 2. Open Goals to inspect the 12 objective requirements and their dependencies. The mock policy makes a dependency mistake, submits an incomplete artifact, receives a correction, and performs an accurate handoff. Both departments use the same work policy; C is not programmed to win.
 3. Open Conversations. A exchanges work information; C additionally has bounded safe non-task dialogue during scheduled breaks. Optional B writes private non-task notes with the same number of extra call opportunities.
 4. Pause/resume, advance one virtual day, or stop. An in-flight model request finishes at a safe recorded boundary. Stop and budget exhaustion are terminal; clone to start again.
@@ -38,6 +52,12 @@ For manual setup on another platform, create a Python 3.11+ virtual environment,
 Experiment settings create a new immutable configuration. Change role prompts, seed, provider/model, days, schedules, optional B, and budgets before creating that run. Cloning preserves settings; repeated identical mock seeds are not independent research replications.
 
 ## Gemini and optional live providers
+
+DeepSeek uses the server's `DEEPSEEK_API_KEY` and the official endpoint. Select `deepseek-flash` or `deepseek-v4-pro`. The adapter requests bounded JSON output with thinking disabled, validates actions server-side, accounts for cache hits and records the model fingerprint when returned. The cost cap uses a frozen peak-price table. Preflight checks model visibility. Adding `--generate` to this command sends one bounded paid request.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check_provider.py --provider deepseek
+```
 
 Keys stay in a server-side `.env` file, which is ignored by Git. Do not put credentials in `web/`, `VITE_` variables, prompts, screenshots, or exported research configuration. `.env.example` lists supported settings; copy it only if an existing `.env` does not already contain your configuration.
 
@@ -93,4 +113,4 @@ For frontend development, start the backend on port 8000, then run `npm --prefix
 | Inspected research sources | [docs/RESEARCH_REFERENCES.md](docs/RESEARCH_REFERENCES.md) |
 | Exact verification and remaining work | [docs/FINAL_HANDOFF.md](docs/FINAL_HANDOFF.md) |
 
-This MVP binds to loopback and is a local admin tool, not an authenticated multi-user service. Do not expose it publicly without authentication, authorization, stronger deployment controls, and a separate security review. Probe task construction/scoring is an isolated extension foundation; automatic model-run probes, real Docker-isolated repository maintenance, hidden executable tests, and publication-quality causal claims remain future work.
+The runtime is a single-researcher loopback service. Public multi-user hosting, automated provider-backed isolation probes and executable repository maintenance remain future extensions. See the [research release verification](docs/RESEARCH_HANDOFF.md) and [human dialogue methods](docs/HUMAN_DIALOGUE.md).

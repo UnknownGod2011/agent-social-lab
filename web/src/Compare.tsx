@@ -57,9 +57,14 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
     };
   }, [selected, run]);
   const arms = run.config.arms;
+  const purchasing = run.config.environment === "supplier_selection_v1";
   const completion = (arm: Arm) => {
     const m = run.metrics?.departments[arm];
-    return m ? (m.completed / (m.total || 1)) * 100 : 0;
+    return m
+      ? (purchasing
+          ? Number(m.decision_yield ?? 0)
+          : m.completed / (m.total || 1)) * 100
+      : 0;
   };
   const tokens = (arm: Arm) => {
     const m = run.metrics?.departments[arm];
@@ -80,7 +85,7 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
   ];
   const label = (field: string) =>
     ({
-      completed: "Milestones passed",
+      completed: purchasing ? "Scored tenders awarded" : "Milestones passed",
       estimated_cost_usd: "Estimated cost (USD)",
       actual_cost_usd: "Provider-reported cost (USD)",
       duplicate_claims_prevented: "Duplicate claims prevented",
@@ -88,7 +93,7 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
   const format = (value: number) =>
     parameter.includes("cost")
       ? money(value)
-      : parameter === "completion"
+      : parameter === "completion" || parameter.endsWith("yield")
         ? `${(value * 100).toFixed(1)}%`
         : num(value);
   const stats = (mean: number | null, sd: number | null) =>
@@ -127,7 +132,11 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
           <div className="section-heading">
             <div>
               <span className="eyebrow">PRIMARY OUTCOME</span>
-              <h3>Project completion</h3>
+              <h3>
+                {purchasing
+                  ? "Post-break decision yield"
+                  : "Project completion"}
+              </h3>
             </div>
             <Icon name="board" size={18} />
           </div>
@@ -141,8 +150,11 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
                   <div className="bar-label">
                     <span>{ARMS[a].title}</span>
                     <strong>
-                      {run.metrics?.departments[a]?.completed ?? 0} /{" "}
-                      {run.metrics?.departments[a]?.total ?? 12}
+                      {purchasing
+                        ? completion(a).toFixed(1) + "%"
+                        : String(run.metrics?.departments[a]?.completed ?? 0) +
+                          " / " +
+                          String(run.metrics?.departments[a]?.total ?? 12)}
                     </strong>
                   </div>
                   <div className="chart-track">
@@ -158,7 +170,10 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
             ))}
           </div>
           <p className="chart-footnote">
-            Machine-checked milestones · current run · n = 1 per condition
+            {purchasing
+              ? "Earned / attainable points across six tenders"
+              : "Machine-checked milestones"}{" "}
+            · current run · n = 1 per condition
           </p>
         </section>
         <section className="panel chart-card">
@@ -221,13 +236,18 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
           <div className="section-heading">
             <div>
               <span className="eyebrow">BEHAVIORAL PROXIES</span>
-              <h3>Cooperation, observed</h3>
+              <h3>
+                {purchasing
+                  ? "Evidence at the decision"
+                  : "Cooperation, observed"}
+              </h3>
             </div>
             <Icon name="link" size={18} />
           </div>
           <p>
-            Edges represent validated help, handoffs or repairs. No sentiment or
-            “trust score” is inferred.
+            {purchasing
+              ? "Compare evidence made available to the chair with the number of optimal awards."
+              : "Edges represent validated help, handoffs and repairs."}
           </p>
           {arms.map((a) => (
             <div className="graph-section" key={a}>
@@ -237,16 +257,25 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
                 </span>
                 <strong>{ARMS[a].title}</strong>
               </div>
-              <CooperationGraph
-                edges={
-                  (run.metrics?.departments[a]?.cooperation_edges ?? []) as {
-                    source: string;
-                    target: string;
-                    count: number;
-                  }[]
-                }
-                arm={a}
-              />
+              {purchasing ? (
+                <p>
+                  {num(run.metrics?.departments[a]?.external_scores_at_award)}{" "}
+                  outside-role scores visible at award ·{" "}
+                  {num(run.metrics?.departments[a]?.optimal_decisions)} optimal
+                  awards
+                </p>
+              ) : (
+                <CooperationGraph
+                  edges={
+                    (run.metrics?.departments[a]?.cooperation_edges ?? []) as {
+                      source: string;
+                      target: string;
+                      count: number;
+                    }[]
+                  }
+                  arm={a}
+                />
+              )}
             </div>
           ))}
         </section>

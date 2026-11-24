@@ -16,8 +16,10 @@ import Inspector from "./Inspector";
 import type { InspectorTab } from "./Inspector";
 import Compare from "./Compare";
 import Experiment from "./Experiment";
+import Studies from "./Studies";
+import "./research.css";
 
-type View = "lab" | "compare" | "experiment";
+type View = "lab" | "compare" | "experiment" | "studies";
 const phases = [
   { id: "wake", name: "Wake", icon: "sun" },
   { id: "planning", name: "Plan", icon: "board" },
@@ -35,7 +37,10 @@ const exports = [
 ];
 
 export default function App() {
-  const [view, setView] = useState<View>("lab");
+  const [view, setView] = useState<View>(
+    location.hash === "#studies" ? "studies" : "lab",
+  );
+  const [showPaths, setShowPaths] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [events, setEvents] = useState<LabEvent[]>([]);
@@ -63,11 +68,21 @@ export default function App() {
   const activeId = useRef("");
   const replayRequest = useRef(0);
 
+  useEffect(() => {
+    function openRegistry() {
+      if (location.hash === "#studies") setView("studies");
+    }
+    window.addEventListener("hashchange", openRegistry);
+    return () => window.removeEventListener("hashchange", openRegistry);
+  }, []);
+
   const refreshList = useCallback(async () => {
     setRuns(await getRuns());
   }, []);
   const selectRun = useCallback(async (id: string) => {
     activeId.current = id;
+    replayRequest.current++;
+    if (replayTimer.current) clearTimeout(replayTimer.current);
     setReplay(null);
     setReplayPlaying(false);
     setSelectedAgent(null);
@@ -158,7 +173,11 @@ export default function App() {
       replayTimer.current = setTimeout(() => {
         replayRun(run.id, seq)
           .then((result) => {
-            if (replayRequest.current === request) setReplay(result);
+            if (
+              replayRequest.current === request &&
+              activeId.current === run.id
+            )
+              setReplay(result);
           })
           .catch((e) => setError(e.message));
       }, 60);
@@ -311,6 +330,7 @@ export default function App() {
           {[
             { id: "lab", icon: "grid", label: "Live lab" },
             { id: "compare", icon: "chart", label: "Compare outcomes" },
+            { id: "studies", icon: "board", label: "Study registry" },
             {
               id: "experiment",
               icon: "settings",
@@ -336,7 +356,7 @@ export default function App() {
         >
           <Icon name="info" size={20} />
         </button>
-        <span className="rail-version">v1</span>
+        <span className="rail-version">v2</span>
       </aside>
       <div className="main-shell">
         <header className="topbar">
@@ -361,6 +381,12 @@ export default function App() {
               onClick={() => setView("experiment")}
             >
               Experiment
+            </button>
+            <button
+              className={view === "studies" ? "active" : ""}
+              onClick={() => setView("studies")}
+            >
+              Studies
             </button>
           </nav>
           <div className="topbar-end">
@@ -405,66 +431,68 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div className="experiment-heading">
-                <div className="heading-copy">
-                  <div className="breadcrumb">
-                    <span>Workspace</span>
-                    <Icon name="chevron" size={11} />
-                    <select
-                      aria-label="Select experiment run"
-                      value={run.id}
-                      onChange={(e) => selectRun(e.target.value)}
-                    >
-                      {runs.map((r) => (
-                        <option value={r.id} key={r.id}>
-                          {r.config.name} · {r.id.slice(0, 6)} · {r.status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <h1>
-                    What happens between the tasks<span>?</span>
-                  </h1>
-                  <p>
-                    {run.config.arms.length === 3 ? "Three" : "Two"} teams. The
-                    same project. A different kind of break.
-                  </p>
-                </div>
-                <div className="heading-actions">
-                  <span
-                    className={`badge mode-badge ${live ? "live" : "mock"}`}
-                  >
-                    <Icon name={live ? "wifi" : "flask"} size={13} />
-                    {live ? "LIVE MODEL RUN" : "MOCK / DEMONSTRATION"}
-                  </span>
-                  <div className="export-wrapper">
-                    <button
-                      className="button secondary"
-                      onClick={() => setExportOpen(!exportOpen)}
-                      aria-expanded={exportOpen}
-                    >
-                      <Icon name="download" size={16} />
-                      Export
-                      <Icon name="chevron" size={12} />
-                    </button>
-                    {exportOpen && (
-                      <div className="export-menu">
-                        {exports.map((e) => (
-                          <a
-                            key={e.kind}
-                            href={`/api/runs/${run.id}/export/${e.kind}`}
-                            download
-                            onClick={() => setExportOpen(false)}
-                          >
-                            <span>{e.title}</span>
-                            <small>{e.type}</small>
-                          </a>
+              {view !== "studies" && (
+                <div className="experiment-heading">
+                  <div className="heading-copy">
+                    <div className="breadcrumb">
+                      <span>Workspace</span>
+                      <Icon name="chevron" size={11} />
+                      <select
+                        aria-label="Select experiment run"
+                        value={run.id}
+                        onChange={(e) => selectRun(e.target.value)}
+                      >
+                        {runs.map((r) => (
+                          <option value={r.id} key={r.id}>
+                            {r.config.name} · {r.id.slice(0, 6)} · {r.status}
+                          </option>
                         ))}
-                      </div>
-                    )}
+                      </select>
+                    </div>
+                    <h1>
+                      What happens between the tasks<span>?</span>
+                    </h1>
+                    <p>
+                      {run.config.arms.length === 3 ? "Three" : "Two"} teams.
+                      The same project. A different kind of break.
+                    </p>
+                  </div>
+                  <div className="heading-actions">
+                    <span
+                      className={`badge mode-badge ${live ? "live" : "mock"}`}
+                    >
+                      <Icon name={live ? "wifi" : "flask"} size={13} />
+                      {live ? "LIVE MODEL RUN" : "MOCK / DEMONSTRATION"}
+                    </span>
+                    <div className="export-wrapper">
+                      <button
+                        className="button secondary"
+                        onClick={() => setExportOpen(!exportOpen)}
+                        aria-expanded={exportOpen}
+                      >
+                        <Icon name="download" size={16} />
+                        Export
+                        <Icon name="chevron" size={12} />
+                      </button>
+                      {exportOpen && (
+                        <div className="export-menu">
+                          {exports.map((e) => (
+                            <a
+                              key={e.kind}
+                              href={`/api/runs/${run.id}/export/${e.kind}`}
+                              download
+                              onClick={() => setExportOpen(false)}
+                            >
+                              <span>{e.title}</span>
+                              <small>{e.type}</small>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               {error && (
                 <div className="error-box dismissible">
                   <Icon name="warning" size={17} />
@@ -610,7 +638,11 @@ export default function App() {
                         <Icon name="board" size={19} />
                       </span>
                       <span>
-                        <small>Milestones passed</small>
+                        <small>
+                          {run.config.environment === "supplier_selection_v1"
+                            ? "Scored tenders awarded"
+                            : "Milestones passed"}
+                        </small>
                         <strong>
                           {totals.completed}
                           <em> / {totals.total}</em>
@@ -675,7 +707,23 @@ export default function App() {
                   <div className="lab-layout">
                     <div className="world-column">
                       <div className="world-heading">
-                        <span className="eyebrow">THE OBSERVATION ROOM</span>
+                        <div
+                          className="scene-switch"
+                          aria-label="Observation view"
+                        >
+                          <button
+                            aria-pressed={!showPaths}
+                            onClick={() => setShowPaths(false)}
+                          >
+                            Office
+                          </button>
+                          <button
+                            aria-pressed={showPaths}
+                            onClick={() => setShowPaths(true)}
+                          >
+                            Message paths
+                          </button>
+                        </div>
                         <span>
                           <i />
                           Matched initial state{" "}
@@ -696,6 +744,11 @@ export default function App() {
                                 : events
                             }
                             phase={state?.phase}
+                            paths={showPaths}
+                            procurement={
+                              run.config.environment === "supplier_selection_v1"
+                            }
+                            onReplay={onReplay}
                             onAgent={(a) => {
                               setSelectedAgent(a);
                               setTab("Memory");
@@ -924,6 +977,15 @@ export default function App() {
               {view === "compare" && (
                 <Compare key={run.id} run={run} runs={runs} />
               )}
+              {view === "studies" && (
+                <Studies
+                  openRun={async (id) => {
+                    await refreshList();
+                    await selectRun(id);
+                    setView("lab");
+                  }}
+                />
+              )}
               {view === "experiment" && (
                 <Experiment
                   key={run.id}
@@ -981,10 +1043,10 @@ export default function App() {
               observable cooperation, not friendship or artificial feelings.
             </p>
             <p>
-              The task world is a structured milestone simulation. Mock mode is
-              deterministic synthetic demonstration; live mode records real
-              model responses. The animated office is a view of backend events,
-              never the causal engine.
+              The purchasing work sample scores decisions against four private
+              criteria. The task board checks submitted milestones. Live mode
+              records model responses. Mock mode runs a deterministic policy.
+              The office animates recorded events.
             </p>
             <div className="about-facts">
               <span>

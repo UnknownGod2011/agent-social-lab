@@ -4,11 +4,11 @@ Set-Location -LiteralPath $PSScriptRoot
 if ($Install -or !(Test-Path '.venv/Scripts/python.exe')) {
     py -3.12 -m venv .venv
     if ($LASTEXITCODE) { throw 'Python 3.12 environment creation failed' }
-    & ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+    & ./.venv/Scripts/python.exe -m pip install -r requirements.lock.txt
     if ($LASTEXITCODE) { throw 'Python dependencies failed' }
 }
 if ($Install -or !(Test-Path 'web/dist/index.html')) {
-    npm --prefix web install
+    npm --prefix web ci
     if ($LASTEXITCODE) { throw 'Frontend dependencies failed' }
     npm --prefix web run build
     if ($LASTEXITCODE) { throw 'Frontend build failed' }

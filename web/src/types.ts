@@ -19,6 +19,9 @@ export type Config = {
   max_output_tokens: number;
   role_prompts: Record<string, string>;
   paid_confirmed: boolean;
+  environment?: "task_board_v1" | "supplier_selection_v1";
+  dialogue_protocol?: "topical_chat_v1" | "catalog_v1";
+  break_memory_mode?: "attributed" | "anonymous" | "withheld";
 };
 export type Agent = {
   id: string;
@@ -36,6 +39,7 @@ export type Agent = {
   }[];
 };
 export type Task = {
+  disclosed?: Record<string, Record<string, number>>;
   id: string;
   title: string;
   acceptance: string;
@@ -145,6 +149,8 @@ export const DEFAULT_CONFIG: Config = {
   max_output_tokens: 768,
   role_prompts: {},
   paid_confirmed: false,
+  environment: "supplier_selection_v1",
+  dialogue_protocol: "topical_chat_v1",
 };
 export const ARMS: Record<
   Arm,

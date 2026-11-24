@@ -36,12 +36,20 @@ def prompt_for(context: dict[str, Any]) -> tuple[str, str, str]:
     excluded = {"action_schema", "role_prompt", "paid_confirmed", "api_key", "api_keys"}
     view = {name: value for name, value in context.items() if name not in excluded}
     system = context.get("role_prompt") or "Choose one allowed action for your assigned role."
+    if context.get("environment") == "supplier_selection_v1" and context.get("phase") != "break":
+        for field in ("department_id", "agent_id", "seed", "cursor", "turn_index", "condition"):
+            view.pop(field, None)
     if context.get("phase") == "break":
         allowed = {"department_id", "agent_id", "role", "phase", "day", "condition", "safe_utterances",
                    "social_messages", "private_notes"}
         view = {name: value for name, value in view.items() if name in allowed}
         system = ("This is a non-task break. Choose one allowed safe utterance ID. "
                   "Do not discuss projects, work status, tasks, solutions, or hints.")
+        if context.get("dialogue_protocol") == "topical_chat_v1":
+            for field in ("department_id", "agent_id", "condition"):
+                view.pop(field, None)
+            system += (" Write one private journal entry." if context.get("department_id") == "B" else
+                       " Speak to your tablemates, taking their previous line into account.")
     system += "\nReturn exactly one JSON action matching the supplied schema. No Markdown."
     user = json.dumps(view, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     digest = hashlib.sha256((system + "\n" + user).encode("utf-8")).hexdigest()
@@ -80,7 +88,7 @@ def provider_schema(context: dict[str, Any]) -> dict[str, Any]:
         schema = next((option for option in options if desired in option.get("properties", {}).get("type", {}).get("enum", [])), None)
         if schema is None:
             raise ProviderError("invalid_break_schema")
-    elif context.get("role") and "anyOf" in schema:
+    elif context.get("role") and "anyOf" in schema and context.get("environment") != "supplier_selection_v1":
         common = {"wait", "request_help", "send_work_message"}
         permissions = {"coordinator": {"claim_task"}, "builder": {"submit_artifact"},
                        "verifier": {"review_artifact"}, "integrator": {"complete_milestone"}}

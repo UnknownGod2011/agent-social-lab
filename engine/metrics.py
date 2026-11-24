@@ -90,6 +90,19 @@ def compute_metrics(events: list[dict], config=None) -> dict:
             metric["reserved_uncertain_cost_usd"] += attempt["payload"].get("reserved_cost_usd", 0)
     for arm, metric in departments.items():
         metric["completed"] = sum(t["status"] == "integrated" for t in tasks[arm].values())
+        if cfg.get("environment") == "supplier_selection_v1":
+            from engine.procurement import case_baselines, CASE_TITLES
+            recorded = next((e["payload_json"].get("baselines") for e in events if e["event_type"] == "run_created"), None)
+            baselines = recorded or case_baselines(cfg["seed"])
+            scored = [t for t in tasks[arm].values() if t.get("scored")]
+            reviews = [t["review"] for t in scored if t.get("review")]
+            points = sum(r["earned_points"] for r in reviews)
+            metric.update(**baselines, total=len(CASE_TITLES) - 1, completed=len(reviews),
+                decided_cases=len(reviews), optimal_decisions=sum(r["optimal"] for r in reviews),
+                earned_points=points, decision_yield=points / baselines["attainable_points"],
+                external_scores_at_award=sum(r["disclosed_external_cells"] for r in reviews),
+                disclosed_score_cells=sum(len(v) for t in scored for v in t.get("disclosed", {}).values()),
+                decision_regret_points=baselines["attainable_points"] - points)
         metric["completion"] = metric["completed"] / metric["total"]
         metric["simulated_minutes"] = max(0, virtual_end - 480)
         if len(bounds[arm]) >= 2:

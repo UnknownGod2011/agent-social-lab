@@ -50,7 +50,7 @@ def reduce_event(state: dict, event: dict) -> dict:
         for agent in recipients:
             agent["memory"].append(dict(day=state["virtual_day"], channel=event.get("channel"),
                 sender_id=agent_id, text=payload.get("text", ""), event_type=kind,
-                **{key: payload[key] for key in ("recipient_id", "fact", "task_id", "evidence_kind", "artifact_version", "recipient_lacked_fact") if key in payload}))
+                **{key: payload[key] for key in ("recipient_id", "fact", "task_id", "evidence_kind", "artifact_version", "recipient_lacked_fact", "break_turn") if key in payload}))
             fact = payload.get("fact")
             if fact and (agent["id"] == payload.get("recipient_id") or agent["id"] == agent_id):
                 fact_id = f"{fact['task_id']}:{fact['rule']}"

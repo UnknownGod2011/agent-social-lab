@@ -1,6 +1,6 @@
 """Typed experiment configuration and the complete, bounded agent action surface."""
 from typing import Annotated, Literal, Union
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 from zoneinfo import ZoneInfo
 
 ROLES = ("coordinator", "builder", "verifier", "integrator")
@@ -11,6 +11,12 @@ DEFAULT_ROLE_PROMPTS = {
     "builder": "You are the Builder. Submit one claimed milestone owned by you. Artifact feature is its task_id; rules must include all known required_rules and valid rules learned through work messages. Incorporate missing rules identified in reviews rather than repeating a failed artifact. If a submitted artifact awaits review, send_work_message to your verifier with kind handoff and its current artifact_version. Do not claim or integrate tasks.",
     "verifier": "You are the Verifier. Review one submitted current artifact version using review_artifact. If a review failed and nothing is submitted, send_work_message to your builder with kind repair and rule equal to the first missing_rules entry. A message cannot replace machine review. Do not integrate milestones. Wait only when neither reviewing nor repair is possible.",
     "integrator": "You are the Integrator. Complete one verified current milestone with integrated dependencies. Otherwise, if any task review failed, send_work_message to your builder with kind repair, rule equal to its first missing_rules entry and an accurate correction. Never complete a claimed or merely submitted task. Wait only when neither integration nor repair is possible.",
+}
+PURCHASING_ROLES = {
+    "coordinator": "You represent delivery reliability. Select the evidence about delivery that the purchasing panel needs.",
+    "builder": "You represent total cost value. Communicate your price evidence to the purchasing panel.",
+    "verifier": "You represent quality assurance. Bring your quality evidence into the supplier comparison.",
+    "integrator": "You represent service coverage and chair the panel. Combine your scorecard with colleagues' published evidence and award a supplier.",
 }
 SAFE_UTTERANCES = {
     "tea": "A warm cup of mint tea sounds lovely this afternoon.",
@@ -36,7 +42,10 @@ class RunConfig(BaseModel):
     days: int = Field(default=3, ge=1, le=5)
     arms: list[Literal["A", "B", "C"]] = Field(default_factory=lambda: ["A", "C"])
     seed: int = Field(default=42, ge=0, le=2147483647)
-    provider: Literal["mock", "gemini", "openai"] = "mock"
+    provider: Literal["mock", "gemini", "openai", "deepseek"] = "mock"
+    environment: Literal["task_board_v1", "supplier_selection_v1"] = "task_board_v1"
+    dialogue_protocol: Literal["catalog_v1", "topical_chat_v1"] = "topical_chat_v1"
+    break_memory_mode: Literal["attributed", "anonymous", "withheld"] = "attributed"
     model: str = Field(default="gemini-3.5-flash-lite", min_length=1, max_length=100)
     scheduler_mode: Literal["virtual", "calendar"] = "virtual"
     wake_time: str = "09:00"
@@ -53,6 +62,13 @@ class RunConfig(BaseModel):
     paid_confirmed: bool = False
     pricing: dict[str, float] = Field(default_factory=dict)
     pricing_version: str = "2026-11-17"
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_provider_model(cls, values):
+        if isinstance(values, dict) and values.get("provider") == "deepseek" and "model" not in values:
+            return {**values, "model": "deepseek-flash"}
+        return values
 
     @field_validator("pricing")
     @classmethod
@@ -93,6 +109,13 @@ class RunConfig(BaseModel):
         if set(value) - set(ROLES) or any(len(p) > 4000 for p in value.values()):
             raise ValueError("Role prompts must use the four role names and stay below 4000 characters.")
         return {**DEFAULT_ROLE_PROMPTS, **{role: prompt for role, prompt in value.items() if prompt.strip()}}
+
+    @model_validator(mode="after")
+    def environment_role_defaults(self):
+        defaults = PURCHASING_ROLES if self.environment == "supplier_selection_v1" else DEFAULT_ROLE_PROMPTS
+        self.role_prompts = {role: defaults[role] if prompt in (DEFAULT_ROLE_PROMPTS[role], PURCHASING_ROLES[role])
+                             else prompt for role, prompt in self.role_prompts.items()}
+        return self
 
 
 class StrictModel(BaseModel):

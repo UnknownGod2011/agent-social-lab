@@ -1,0 +1,47 @@
+{
+  "split": "https://raw.githubusercontent.com/alexa/Topical-Chat/7c939229cbcf6f55f6977b341a5a2f2fe982d53f/conversations/valid_freq.json",
+  "sha256": "d14e8bde94fa5556d4aad8fd3fb666df674e4fef8b4193c8c3c06c72822a366b",
+  "synthetic_first_seed": 800000,
+  "human": {
+    "threads": 539,
+    "turns": 2156,
+    "median_words": 15.0,
+    "openings": {
+      "question": 462,
+      "statement": 77
+    },
+    "transitions": {
+      "question/acknowledgment": 111,
+      "acknowledgment/question": 50,
+      "question/statement": 408,
+      "question/question": 443,
+      "statement/question": 194,
+      "statement/statement": 246,
+      "statement/acknowledgment": 84,
+      "acknowledgment/statement": 56,
+      "acknowledgment/acknowledgment": 25
+    }
+  },
+  "generated": {
+    "threads": 539,
+    "turns": 2156,
+    "median_words": 15.0,
+    "openings": {
+      "question": 458,
+      "statement": 81
+    },
+    "transitions": {
+      "question/question": 381,
+      "question/statement": 384,
+      "statement/question": 175,
+      "statement/statement": 284,
+      "statement/acknowledgment": 110,
+      "acknowledgment/statement": 78,
+      "acknowledgment/acknowledgment": 31,
+      "question/acknowledgment": 115,
+      "acknowledgment/question": 59
+    }
+  },
+  "opening_total_variation": 0.00742,
+  "transition_total_variation": 0.06494
+}

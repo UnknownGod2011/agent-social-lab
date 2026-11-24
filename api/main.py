@@ -21,25 +21,30 @@ from engine.metrics import compute_metrics
 from engine.scheduler import Scheduler, budget_usage, preview, freeze_pricing
 from engine.world import digest
 from providers.gemini import GeminiPool
-from providers.base import price_estimate
+from providers.deepseek import DeepSeekProvider, DEFAULT_MODEL, MODEL_PRICES
 from storage.store import Store
+from api.studies import router as study_router
+from engine.study import implementation
 
 
 @asynccontextmanager
 async def lifespan(app):
+    implementation()
     app.state.store = Store(os.environ.get("LAB_DB", "data/lab.sqlite3"), exclusive=True)
     app.state.pool = GeminiPool()
     app.state.scheduler = Scheduler(app.state.store, app.state.pool)
     await app.state.scheduler.recover()
     if not app.state.store.list():
-        app.state.store.create(RunConfig())
+        app.state.store.create(RunConfig(name="Purchasing lab · offline", environment="supplier_selection_v1",
+                                         arms=["A","B","C"], model="mock-v1"))
     yield
     await app.state.scheduler.shutdown()
     await app.state.pool.close()
     app.state.store.close()
 
 
-app = FastAPI(title="Beyond Task Talk Lab", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Beyond Task Talk Lab", version="2.0.0", lifespan=lifespan)
+app.include_router(study_router)
 
 
 @app.middleware("http")
@@ -79,16 +84,27 @@ def detail(run_id):
 @app.get("/api/health")
 def health():
     keys = app.state.pool.health()
-    return {"status": "ok", "version": "1.0.0", "providers": {
+    return {"status": "ok", "version": "2.0.0", "providers": {
         "mock": True, "gemini": {"configured_keys": len(keys), "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             "credentials": keys, "quota_scope": "Project-wide; unknown credentials conservatively share a cooldown"},
+        "deepseek": {"configured": bool(os.environ.get("DEEPSEEK_API_KEY")), "model": DEFAULT_MODEL,
+                    "models": list(MODEL_PRICES), "pricing_basis": "Frozen peak USD per million tokens"},
         "openai": {"configured": bool(os.environ.get("OPENAI_API_KEY")), "live_verified": False}},
-        "environment": "structured task-board simulation, not executable code generation",
+        "environments": ["task_board_v1", "supplier_selection_v1"],
         "calendar": "Local server must remain running. One overdue day resumes after restart."}
 
 
 @app.post("/api/providers/check")
 async def check_providers(body: dict | None = None):
+    selected = (body or {}).get("provider", "gemini")
+    if selected == "deepseek":
+        provider = DeepSeekProvider((body or {}).get("model", DEFAULT_MODEL))
+        try:
+            return await provider.preflight()
+        finally:
+            await provider.close()
+    if selected != "gemini":
+        raise HTTPException(400, "Model catalog checks are available for Gemini and DeepSeek.")
     model = (body or {}).get("model", os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"))
     return await app.state.pool.preflight(model)
 
@@ -105,11 +121,12 @@ def preview_config(config: RunConfig):
 
 @app.post("/api/runs", status_code=201)
 def create_run(config: RunConfig):
-    if config.provider == "openai" and not config.paid_confirmed:
-        raise HTTPException(400, "Explicit admin confirmation is required for paid OpenAI-compatible calls.")
-    if config.provider != "mock" and price_estimate(config.model, 1, 1, prefix="GEMINI" if config.provider == "gemini" else "OPENAI") is None:
-        raise HTTPException(400, "This model needs known server-side token prices before the cost cap can be enforced.")
-    config = freeze_pricing(config)
+    if config.provider in {"deepseek", "openai"} and not config.paid_confirmed:
+        raise HTTPException(400, "Explicit admin confirmation is required for paid model calls.")
+    try:
+        config = freeze_pricing(config)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
     return detail(store().create(config)["id"])
 
 
@@ -125,6 +142,8 @@ class Control(BaseModel):
 @app.post("/api/runs/{run_id}/control")
 async def control(run_id: str, body: Control):
     run = get_run(run_id)
+    if body.command in {"start", "resume", "advance_day"} and run["config"]["provider"] == "deepseek" and not os.environ.get("DEEPSEEK_API_KEY"):
+        raise HTTPException(400, "No DeepSeek credential is configured in the server environment.")
     if body.command in {"start", "resume", "advance_day"} and run["config"]["provider"] == "gemini":
         if not app.state.pool.health():
             raise HTTPException(400, "No Gemini keys are configured server-side. Clone into mock mode or configure .env.")
@@ -138,7 +157,7 @@ async def control(run_id: str, body: Control):
 @app.post("/api/runs/{run_id}/clone", status_code=201)
 def clone(run_id: str):
     run = get_run(run_id)
-    config = RunConfig(**run["config"])
+    config = RunConfig(**{"dialogue_protocol": "catalog_v1", **run["config"]})
     return detail(store().create(config)["id"])
 
 
@@ -222,8 +241,9 @@ def export(run_id: str, kind: str):
         data, mime = csv_data(rows), "text/csv"
     elif kind == "config.json":
         data = json.dumps({"schema_version": 1, "run_id": run_id, "config": run["config"], "config_hash": run["config_hash"],
-                           "initial_state_hash": run["initial_state_hash"], "pricing_version": "2026-11-17",
-                           "semantics": "Structured task-board simulation; estimates are not provider-confirmed charges."}, indent=2)
+                           "initial_state_hash": run["initial_state_hash"], "pricing_version": run["config"].get("pricing_version"),
+                           "environment": run["config"].get("environment","task_board_v1"),
+                           "semantics": "Rule-scored work sample. Cost estimates use the stored model price table."}, indent=2)
         mime = "application/json"
     else:
         raise HTTPException(404, "Unknown export format")

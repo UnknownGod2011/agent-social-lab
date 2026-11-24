@@ -3,6 +3,7 @@ import type { Agent, Arm, LabEvent, Run, State } from "./types";
 import { ARMS, COLORS, ROLES, money, nice, num } from "./types";
 import { Creature } from "./Office";
 import Icon from "./Icon";
+import TenderEvidence from "./TenderEvidence";
 
 export const TABS = [
   "Activity",
@@ -40,13 +41,35 @@ export function MetricsView({ run }: { run: Run }) {
   const depts = run.state?.departments ?? {};
   const metrics = run.metrics?.departments ?? {};
   const arms = Object.keys(depts) as Arm[];
+  const purchasing = run.config.environment === "supplier_selection_v1";
   const rows: {
     label: string;
     key: string;
     format?: (n: unknown) => string;
     help?: string;
   }[] = [
-    { label: "Milestones passed", key: "completed" },
+    ...(purchasing
+      ? [
+          {
+            label: "Decision yield",
+            key: "decision_yield",
+            format: (v: unknown) =>
+              typeof v === "number" ? (100 * v).toFixed(1) + "%" : "—",
+          },
+          { label: "Points earned", key: "earned_points" },
+          { label: "Points attainable", key: "attainable_points" },
+          { label: "Optimal awards", key: "optimal_decisions" },
+          { label: "Private scores disclosed", key: "disclosed_score_cells" },
+          {
+            label: "External scores available at award",
+            key: "external_scores_at_award",
+          },
+        ]
+      : []),
+    {
+      label: purchasing ? "Scored tenders awarded" : "Milestones passed",
+      key: "completed",
+    },
     {
       label: "Overall completion",
       key: "completion",
@@ -129,20 +152,35 @@ export function MetricsView({ run }: { run: Run }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.key}
-                className={row.key.includes("cost") ? "cost-row" : ""}
-              >
-                <td title={row.help}>
-                  {row.label}
-                  {row.help && <Icon name="info" size={12} />}
-                </td>
-                {arms.map((a) => (
-                  <td key={a}>{(row.format ?? num)(metrics[a]?.[row.key])}</td>
-                ))}
-              </tr>
-            ))}
+            {rows
+              .filter(
+                (row) =>
+                  !purchasing ||
+                  ![
+                    "blocked_actions",
+                    "help_given",
+                    "help_received",
+                    "handoffs",
+                    "repairs",
+                    "duplicate_claims_prevented",
+                  ].includes(row.key),
+              )
+              .map((row) => (
+                <tr
+                  key={row.key}
+                  className={row.key.includes("cost") ? "cost-row" : ""}
+                >
+                  <td title={row.help}>
+                    {row.label}
+                    {row.help && <Icon name="info" size={12} />}
+                  </td>
+                  {arms.map((a) => (
+                    <td key={a}>
+                      {(row.format ?? num)(metrics[a]?.[row.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -540,12 +578,20 @@ export default function Inspector({
               )}
             </div>
             <div className="panel-intro compact">
-              <h3>One project. Carried forward.</h3>
+              <h3>
+                {run.config.environment === "supplier_selection_v1"
+                  ? "The purchasing brief"
+                  : "One project. Carried forward."}
+              </h3>
               <p>
-                A deterministic task-board milestone world. This is a simulated
-                project, not generated production software.
+                {run.config.environment === "supplier_selection_v1"
+                  ? "One practice decision precedes the first break. Six scored tenders follow. Each role has a private criterion and the integrator awards the contract."
+                  : "A deterministic task-board project with machine-checked milestone requirements."}
               </p>
             </div>
+            {run.config.environment === "supplier_selection_v1" && (
+              <TenderEvidence runId={run.id} tasks={tasks} />
+            )}
             <div className="goal-list">
               {tasks.map((t, i) => (
                 <article

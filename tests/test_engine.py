@@ -81,8 +81,9 @@ def test_failed_review_requires_repair_and_current_version():
     assert events[0]["event_type"] == "action_rejected"
 
 
-def test_break_restrictions_and_private_journals():
+def test_legacy_break_restrictions_and_private_journals():
     state = work_state(["A", "B", "C"])
+    state["config"].pop("dialogue_protocol")  # A pre-versioning, persisted run.
     state = reduce_event(state, dict(event_type="phase_started", payload_json=dict(phase="break")))
     for arm in ["A", "B"]:
         _, events = apply(state, arm, "builder", dict(type="chat_smalltalk", utterance_id="tea"))

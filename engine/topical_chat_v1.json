@@ -1,0 +1,34 @@
+{
+  "available_dialogues": 8628,
+  "corpus": "Topical-Chat",
+  "eligible_dialogues": 8628,
+  "license": "CDLA-Sharing-1.0",
+  "license_url": "https://raw.githubusercontent.com/alexa/Topical-Chat/7c939229cbcf6f55f6977b341a5a2f2fe982d53f/DATALICENSE",
+  "opening_counts": {
+    "acknowledgment": 18,
+    "question": 7301,
+    "statement": 1309
+  },
+  "protocol": "topical_chat_v1",
+  "source": "https://raw.githubusercontent.com/alexa/Topical-Chat/7c939229cbcf6f55f6977b341a5a2f2fe982d53f/conversations/train.json",
+  "source_sha256": "39a079d8464ea5f44f0fd78dbc85fd4eed96303347cbf4f9301f823e3c0f437f",
+  "split": "train",
+  "transition_counts": {
+    "acknowledgment": {
+      "acknowledgment": 405,
+      "question": 675,
+      "statement": 1085
+    },
+    "question": {
+      "acknowledgment": 1619,
+      "question": 6220,
+      "statement": 6713
+    },
+    "statement": {
+      "acknowledgment": 1509,
+      "question": 2902,
+      "statement": 4756
+    }
+  },
+  "turns_measured": 34512
+}

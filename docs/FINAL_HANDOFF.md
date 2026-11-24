@@ -1,5 +1,7 @@
 # Final handoff — Beyond Task Talk Lab
 
+For the current release, see the [research handoff](RESEARCH_HANDOFF.md) and the [paper protocol](RESEARCH_PROTOCOL.md). The historical task-board release record begins below.
+
 ## Open and run
 
 Local application: **http://127.0.0.1:8000**. Keep its server terminal running. The same URL serves React, REST, SSE, exports and API documentation (`/docs`). Refresh the browser after frontend changes are built.

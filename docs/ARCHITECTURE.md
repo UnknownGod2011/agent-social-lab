@@ -1,5 +1,35 @@
 # Architecture and maintenance guide
 
+## Research release
+
+```mermaid
+flowchart LR
+  Register[Study registry] -->|allocate seeds and freeze manifest| DB[(SQLite)]
+  DB --> Scheduler[Matched turn scheduler]
+  Scheduler --> View[Role-specific work or break observation]
+  View --> Adapter[Mock / Gemini / DeepSeek / compatible model]
+  Adapter --> Validator[Action validation and private evaluator]
+  Validator --> Ledger[Append-only hash-chained events]
+  Ledger --> DB
+  Ledger --> UI[Replay, office and evidence inspector]
+  Ledger --> Export[Study packet and independent scorer]
+```
+
+| Module | Responsibility |
+|---|---|
+| `engine/study.py`, `api/studies.py` | Validate prospective registrations, freeze content hashes, model rates, runtime versions, corpus and analysis plan. Allocate matched runs atomically. Report contrasts, missing blocks and interval conditions. |
+| `engine/procurement.py` | Generate matched private supplier scorecards, project each role's observations, enforce disclosure/request/award permissions, grade irreversible decisions and supply a deterministic reference policy. Practice closes at the first break. |
+| `engine/dialogue.py`, `engine/topical_chat_v1.json` | Human-derived transition counts drive the same surface-move schedule in B and C. The controlled rendering takes the actual preceding choice into account. A work projection can include named, anonymized or withheld break memories. |
+| `providers/deepseek.py`, `providers/openai.py` | DeepSeek uses native JSON mode on its compatible endpoint. The shared transport isolates credentials and retains usage, request digests, model version/fingerprint and uncertainty. |
+| `storage/store.py` | Study-to-seed allocation and genesis events share a transaction. New event envelopes include previous and current SHA-256 digests. Full audit replays from genesis and compares every stored snapshot and final materialized state. Historic MVP events retain their original format. |
+| `scripts/study_packet.py` | Execute already registered runs, export a consistent event prefix for each block, verify the envelope chain, and independently re-score every choice from four numeric scorecards. An archive can be checked without backend dependencies. |
+| `scripts/fit_dialogue_profile.py`, `scripts/validate_dialogue.py` | Refit counts from a pinned train split and measure generated surface features against a held-out human split. |
+| `web/src/Studies.tsx`, `TenderEvidence.tsx`, `MessagePaths.tsx`, `Creature.tsx` | Register blocks, interpret recorded outcomes, inspect what each role could see, trace addressed messages and display action-derived poses. No browser action supplies a task score. |
+
+New endpoints include `GET/POST /api/studies`, `GET /api/studies/{id}`, `GET /api/studies/{id}/export`, `GET /api/runs/{id}/casebook` and `GET /api/runs/{id}/audit`. Private evaluator data is available to the local researcher. Agent providers receive a role-specific observation. The execution guard compares the backend source digest and installed runtime versions before starting or resuming an allocated block. Preserve the matching checkout and dependency lock. Hash-chaining supports integrity checks against an independently saved digest. External attestation requires saving the digest in a service independent of the local operator.
+
+The remaining sections document the original shared engine and task-board environment. The paper-facing design and scoring rules are in [the research protocol](RESEARCH_PROTOCOL.md).
+
 ## What this application does
 
 Beyond Task Talk Lab runs matched groups of four software-project agents in a small, explicit world. Agents submit typed requests; the engine decides whether those requests are valid. A task is successful because a deterministic evaluator accepted its structured artifact, never because an agent said it was successful. The browser displays that recorded world and offers research controls. Its office animation has no causal role in the experiment.

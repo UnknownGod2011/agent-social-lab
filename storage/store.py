@@ -77,6 +77,21 @@ class Store:
           run_id TEXT NOT NULL, virtual_day INTEGER NOT NULL, started_at TEXT NOT NULL,
           PRIMARY KEY(run_id,virtual_day)
         );
+        CREATE TABLE IF NOT EXISTS studies (
+          id TEXT PRIMARY KEY, manifest_json TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS study_blocks (
+          study_id TEXT NOT NULL REFERENCES studies(id), seed INTEGER NOT NULL,
+          run_id TEXT NOT NULL UNIQUE REFERENCES runs(id), PRIMARY KEY(study_id,seed)
+        );
+        CREATE TRIGGER IF NOT EXISTS immutable_studies BEFORE UPDATE ON studies
+          BEGIN SELECT RAISE(ABORT,'study manifests are immutable'); END;
+        CREATE TRIGGER IF NOT EXISTS immutable_blocks BEFORE UPDATE ON study_blocks
+          BEGIN SELECT RAISE(ABORT,'block allocations are immutable'); END;
+        CREATE TRIGGER IF NOT EXISTS retain_studies BEFORE DELETE ON studies
+          BEGIN SELECT RAISE(ABORT,'study manifests are immutable'); END;
+        CREATE TRIGGER IF NOT EXISTS retain_blocks BEFORE DELETE ON study_blocks
+          BEGIN SELECT RAISE(ABORT,'block allocations are immutable'); END;
         CREATE TRIGGER IF NOT EXISTS immutable_events_update BEFORE UPDATE ON events
           BEGIN SELECT RAISE(ABORT,'events are append-only'); END;
         CREATE TRIGGER IF NOT EXISTS immutable_events_delete BEFORE DELETE ON events
@@ -89,20 +104,28 @@ class Store:
         self.db.commit()
 
     def create(self, config):
+        with self.lock, self.db:
+            return self.get(self._insert_run(config))
+
+    def _insert_run(self, config):
+        """Caller owns a transaction, including the genesis event and snapshot."""
         run_id = uuid.uuid4().hex[:12]
         state = initial_state(config)
         config_dict = config.model_dump(mode="json")
-        # Only the board, without condition metadata, defines matched starting tasks.
         first = next(iter(state["departments"].values()))
         initial_hash = first.get("initial_hash") or digest(first["tasks"])
-        with self.lock, self.db:
-            self.db.execute("INSERT INTO runs(id,config_json,config_hash,initial_state_hash,created_at,state_json) VALUES(?,?,?,?,?,?)",
-                            (run_id, encode(config_dict), digest(config_dict), initial_hash, now(), encode(state)))
-            self.db.execute("INSERT INTO snapshots VALUES(?,?,?,?)", (run_id, 0, encode(state), digest(state)))
-        self.append(run_id, [{"event_type": "run_created", "payload_json": {
-            "config_hash": digest(config_dict), "initial_state_hash": initial_hash,
-            "mode": "MOCK / DEMONSTRATION" if config.provider == "mock" else "LIVE MODEL RUN"}}])
-        return self.get(run_id)
+        self.db.execute("INSERT INTO runs(id,config_json,config_hash,initial_state_hash,created_at,state_json) VALUES(?,?,?,?,?,?)",
+                        (run_id, encode(config_dict), digest(config_dict), initial_hash, now(), encode(state)))
+        self.db.execute("INSERT INTO snapshots VALUES(?,?,?,?)", (run_id, 0, encode(state), digest(state)))
+        payload = {
+            "config_hash": digest(config_dict), "initial_state_hash": initial_hash, "ledger_version": 1,
+            "mode": "MOCK / DEMONSTRATION" if config.provider == "mock" else "LIVE MODEL RUN"}
+        if config.environment == "supplier_selection_v1":
+            from engine.procurement import casebook, case_baselines
+            # Stored only in the research ledger. No agent projection reads the genesis payload.
+            payload.update(casebook=casebook(config.seed), baselines=case_baselines(config.seed))
+        self._append_transaction(run_id, [{"event_type": "run_created", "payload_json": payload}])
+        return run_id
 
     def get(self, run_id):
         with self.lock:
@@ -128,42 +151,51 @@ class Store:
             self.db.execute("UPDATE runs SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?", (*values.values(), run_id))
 
     def append(self, run_id, drafts, *, cursor=None):
+        with self.lock, self.db:
+            return self._append_transaction(run_id, drafts, cursor=cursor)
+
+    def _append_transaction(self, run_id, drafts, *, cursor=None):
         if cursor is not None:
             drafts = [*drafts, {"event_type": "cursor_advanced", "payload_json": {"cursor": cursor}}]
         committed = []
-        with self.lock, self.db:
-            row = self.db.execute("SELECT state_json,seq,config_json FROM runs WHERE id=?", (run_id,)).fetchone()
-            if not row:
-                raise KeyError(run_id)
-            state, seq, config = json.loads(row[0]), row[1], json.loads(row[2])
-            for draft in drafts:
-                seq += 1
-                dept = draft.get("department_id")
-                event = {
-                    "event_id": uuid.uuid4().hex, "run_id": run_id, "seq": seq,
-                    "department_id": dept, "condition": dept,
-                    "virtual_day": draft.get("virtual_day", state.get("virtual_day", 1)),
-                    "ts_utc": now(), "agent_id": None, "event_type": "event",
-                    "channel": None, "task_id": None, "payload_json": {},
-                    "provider_model": "mock-v1" if config["provider"] == "mock" else config["model"],
-                    "prompt_hash": None, "input_tokens": None, "output_tokens": None,
-                    "estimated_cost_usd": None, "elapsed_ms": None, "severity": "info",
-                }
-                event.update(copy.deepcopy(draft))
-                state = reduce_event(state, event)
-                event["state_hash"] = digest(state)
-                self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
+        row = self.db.execute("SELECT state_json,seq,config_json FROM runs WHERE id=?", (run_id,)).fetchone()
+        if not row:
+            raise KeyError(run_id)
+        state, seq, config = json.loads(row[0]), row[1], json.loads(row[2])
+        tail = self.db.execute("SELECT json_extract(envelope_json,'$.chain_hash') FROM events WHERE run_id=? AND seq=?",
+                               (run_id, seq)).fetchone()
+        previous = tail[0] if tail else None
+        for draft in drafts:
+            seq += 1
+            dept = draft.get("department_id")
+            event = {
+                "event_id": uuid.uuid4().hex, "run_id": run_id, "seq": seq,
+                "department_id": dept, "condition": dept,
+                "virtual_day": draft.get("virtual_day", state.get("virtual_day", 1)),
+                "ts_utc": now(), "agent_id": None, "event_type": "event",
+                "channel": None, "task_id": None, "payload_json": {},
+                "provider_model": "mock-v1" if config["provider"] == "mock" else config["model"],
+                "prompt_hash": None, "input_tokens": None, "output_tokens": None,
+                "estimated_cost_usd": None, "elapsed_ms": None, "severity": "info",
+            }
+            event.update(copy.deepcopy(draft))
+            state = reduce_event(state, event)
+            event["state_hash"] = digest(state)
+            if previous is not None or (seq == 1 and event["payload_json"].get("ledger_version") == 1):
+                event["previous_hash"] = previous
+                previous = event["chain_hash"] = digest(event)
+            self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
+                event["event_id"], run_id, seq, dept, event["virtual_day"], event["agent_id"],
+                event["channel"], event["task_id"], event["event_type"], event["severity"], encode(event)))
+            if event["event_type"] == "message_sent":
+                p = event["payload_json"]
+                self.db.execute("INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
                     event["event_id"], run_id, seq, dept, event["virtual_day"], event["agent_id"],
-                    event["channel"], event["task_id"], event["event_type"], event["severity"], encode(event)))
-                if event["event_type"] == "message_sent":
-                    p = event["payload_json"]
-                    self.db.execute("INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
-                        event["event_id"], run_id, seq, dept, event["virtual_day"], event["agent_id"],
-                        event["channel"], event["task_id"], p.get("text", ""), p.get("visibility", "department"), p.get("recipient_id")))
-                committed.append(event)
-            self.db.execute("UPDATE runs SET state_json=?,seq=? WHERE id=?", (encode(state), seq, run_id))
-            if drafts and (seq // 40 != row[1] // 40 or state["status"] in {"completed", "stopped"}):
-                self.db.execute("INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?)", (run_id, seq, encode(state), digest(state)))
+                    event["channel"], event["task_id"], p.get("text", ""), p.get("visibility", "department"), p.get("recipient_id")))
+            committed.append(event)
+        self.db.execute("UPDATE runs SET state_json=?,seq=? WHERE id=?", (encode(state), seq, run_id))
+        if drafts and (seq // 40 != row[1] // 40 or state["status"] in {"completed", "stopped"}):
+            self.db.execute("INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?)", (run_id, seq, encode(state), digest(state)))
         return committed
 
     def events(self, run_id, *, after=0, limit=None, **filters):
@@ -191,11 +223,76 @@ class Store:
         with self.lock:
             row = self.db.execute("SELECT seq,state_json FROM snapshots WHERE run_id=? AND seq<=? ORDER BY seq DESC LIMIT 1", (run_id, target)).fetchone()
         state = json.loads(row[1])
-        for event in self.events(run_id, after=row[0]):
-            if event["seq"] > target:
-                break
+        for event in self.events(run_id, after=row[0], limit=target - row[0]):
             state = reduce_event(state, event)
         return {"state": state, "seq": target, "state_hash": digest(state), "read_only": True}
+
+    def register_study(self, manifest, configs):
+        study_id = digest(manifest)
+        with self.lock, self.db:
+            if self.db.execute("SELECT 1 FROM studies WHERE id=?", (study_id,)).fetchone():
+                return study_id
+            self.db.execute("INSERT INTO studies VALUES(?,?,?)", (study_id, encode(manifest), now()))
+            for config in configs:
+                run_id = self._insert_run(config)
+                self.db.execute("INSERT INTO study_blocks VALUES(?,?,?)", (study_id, config.seed, run_id))
+        return study_id
+
+    def studies(self, study_id=None):
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM studies WHERE ? IS NULL OR id=? ORDER BY created_at DESC",
+                                   (study_id, study_id)).fetchall()
+        return [dict(id=r["id"], created_at=r["created_at"], manifest=json.loads(r["manifest_json"])) for r in rows]
+
+    def blocks(self, study_id):
+        with self.lock:
+            return [dict(r) for r in self.db.execute(
+                "SELECT b.seed,b.run_id,r.config_hash,r.initial_state_hash,r.seq,json_extract(r.state_json,'$.status') AS status "
+                "FROM study_blocks b JOIN runs r ON r.id=b.run_id WHERE study_id=? ORDER BY b.rowid", (study_id,))]
+
+    def registered_protocol(self, run_id):
+        with self.lock:
+            row = self.db.execute("SELECT manifest_json FROM studies s "
+                "JOIN study_blocks b ON b.study_id=s.id WHERE b.run_id=?", (run_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def audit(self, run_id):
+        """Verify a consistent prefix from genesis, bypassing intermediate replay snapshots."""
+        with self.lock:
+            run = self.get(run_id)
+            logs = self.events(run_id)
+            snapshots = {r["seq"]: (json.loads(r["state_json"]), r["state_hash"]) for r in self.db.execute(
+                "SELECT * FROM snapshots WHERE run_id=?", (run_id,))}
+        state, genesis = snapshots[0]
+        errors = []
+        if (digest(state) != genesis or digest(run["config"]) != run["config_hash"]
+                or state["config"] != run["config"] or not logs
+                or logs[0]["payload_json"].get("initial_state_hash") != run["initial_state_hash"]
+                or logs[0]["payload_json"].get("config_hash") != run["config_hash"]):
+            errors.append("Genesis snapshot or configuration digest mismatch")
+        previous = None
+        chained = bool(logs and logs[0]["payload_json"].get("ledger_version") == 1)
+        for seq, event in enumerate(logs, start=1):
+            state = reduce_event(state, event)
+            state_hash = digest(state)
+            if event["seq"] != seq or event["run_id"] != run_id or state_hash != event["state_hash"]:
+                errors.append(f"State or sequence mismatch at {seq}")
+                break
+            if chained:
+                fields = {k: v for k, v in event.items() if k != "chain_hash"}
+                if fields.get("previous_hash") != previous or digest(fields) != event.get("chain_hash"):
+                    errors.append(f"Event chain mismatch at {seq}")
+                    break
+                previous = event["chain_hash"]
+            if seq in snapshots:
+                snap, claimed = snapshots[seq]
+                if state_hash != claimed or digest(snap) != claimed:
+                    errors.append(f"Snapshot mismatch at {seq}")
+                    break
+        if len(logs) != run["seq"] or state != run["state"]:
+            errors.append("Final materialized state or length differs from replay")
+        return dict(run_id=run_id, valid=not errors, events=len(logs), seq=run["seq"], snapshots=len(snapshots),
+                    chained=chained, ledger_head=previous, errors=errors)
 
     def claim_day(self, run_id, day):
         with self.lock, self.db:

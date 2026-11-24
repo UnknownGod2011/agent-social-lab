@@ -18,12 +18,17 @@ class MockProvider:
         if phase == "break":
             if arm in {"B", "C"}:
                 choices = list(SAFE_UTTERANCES)[:8]
-                if arm == "C" and context.get("social_messages"):
+                if context.get("dialogue_protocol") == "topical_chat_v1":
+                    choices = list(context["safe_utterances"])
+                elif arm == "C" and context.get("social_messages"):
                     choices = [key for key in SAFE_UTTERANCES if key.startswith("reply_")]
                 action = dict(type="chat_smalltalk" if arm == "C" else "journal_non_task",
                               utterance_id=choices[choice % len(choices)])
             else:
                 action = dict(type="wait", reason="rest")
+        elif context.get("environment") == "supplier_selection_v1":
+            from engine.procurement import scripted_action
+            action = scripted_action(context)
         elif role == "coordinator":
             ready = [t for t in tasks if t["status"] == "available" and
                      all(next(x for x in tasks if x["id"] == dep)["status"] == "integrated" for dep in t["dependencies"])]

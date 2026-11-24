@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 from pydantic import ValidationError
+from engine import dialogue
 from engine.domain import ACTION_ADAPTER, AGENT_NAMES, CONDITIONS, ROLES, SAFE_UTTERANCES, RunConfig, action_schema
 
 FEATURES = [
@@ -40,8 +41,12 @@ def initial_state(config: RunConfig | dict) -> dict:
                          known_facts=[f"{task_id}:{rule}" for task_id, rules in RULES.items() for rule in rules
                                       if not (role == "builder" and task_id == "schema" and rule == "status_enum")])
                     for role in ROLES])
-    return dict(status="ready", virtual_day=1, phase="ready", virtual_minute=480, cursor=0,
-                seed=config.seed, config=config.model_dump(), departments=departments)
+    state = dict(status="ready", virtual_day=1, phase="ready", virtual_minute=480, cursor=0,
+                 seed=config.seed, config=config.model_dump(), departments=departments)
+    if config.environment == "supplier_selection_v1":
+        from engine.procurement import initialize
+        return initialize(state)
+    return state
 
 
 def _scenario(feature: str, rule: str, enabled: set[str]):
@@ -102,7 +107,11 @@ def context_for_agent(state: dict, department_id: str, agent_id: str, phase: str
     agent = next(a for a in department["agents"] if a["id"] == agent_id)
     common = dict(department_id=department_id, agent_id=agent_id, role=agent["role"], phase=phase,
                   day=state["virtual_day"], seed=state.get("seed", 42), cursor=state.get("cursor", 0))
+    config = state.get("config", {})
+    corpus_break = config.get("dialogue_protocol") == dialogue.PROTOCOL
     if phase == "break":
+        if corpus_break:
+            return dialogue.break_view(state, agent, department_id, common)
         # No board, work memories, status, artifacts, or role prompts enter break prompts.
         context = dict(**common, condition=department["condition"], safe_utterances=SAFE_UTTERANCES,
                        instruction="Choose one safe non-task utterance ID. You may respond to a previous safe line. Do not discuss work.")
@@ -115,28 +124,46 @@ def context_for_agent(state: dict, department_id: str, agent_id: str, phase: str
             context["private_notes"] = [m["text"] for m in agent["memory"]
                 if m.get("channel") == "notes" and m.get("text") and m.get("sender_id") == agent_id][-12:]
         return context
+    if config.get("environment") == "supplier_selection_v1":
+        from engine.procurement import work_view
+        view = work_view(state, department_id, agent_id)
+        if corpus_break:
+            view["break_memory"] = dialogue.work_break_memory(agent, config)
+        return view
     visible_tasks = copy.deepcopy(department["tasks"])
     for task in visible_tasks:
         task["required_rules"] = [rule for rule in task["required_rules"] if f"{task['id']}:{rule}" in agent.get("known_facts", [])]
+    work_memory = [m for m in agent["memory"] if m.get("channel") == "work"] if corpus_break else agent["memory"]
     return dict(**common, condition=department["condition"], tasks=visible_tasks,
                 agents=[dict(id=a["id"], role=a["role"]) for a in department["agents"]],
-                memory=copy.deepcopy(agent["memory"][-30:]), help_requests=copy.deepcopy(department.get("help_requests", [])),
+                memory=copy.deepcopy(work_memory[-30:]), help_requests=copy.deepcopy(department.get("help_requests", [])),
+                **({"break_memory": dialogue.work_break_memory(agent, config)} if corpus_break else {}),
                 role_prompt=state.get("config", {}).get("role_prompts", {}).get(agent["role"], ""),
                 action_schema=action_schema(), instruction="Choose one typed action. Artifacts are declarative feature rules, not executable code.")
 
 
 def process_action(state: dict, department_id: str, agent_id: str, raw: dict) -> list[dict]:
+    config = state.get("config", {})
+    corpus_break = state["phase"] == "break" and config.get("dialogue_protocol") == dialogue.PROTOCOL
+    if config.get("environment") == "supplier_selection_v1" and state["phase"] != "break":
+        from engine.procurement import apply_action
+        return apply_action(state, department_id, agent_id, raw)
     def draft(kind, payload, channel="work", task_id=None):
         return dict(event_type=kind, department_id=department_id, agent_id=agent_id,
                     channel=channel, task_id=task_id, payload_json=payload)
 
     def reject(reason, **evidence):
+        if corpus_break:
+            channel = {"B": "notes", "C": "small_talk"}.get(department_id, "system")
+            return [draft("action_rejected", dict(reason=reason, evidence=evidence), channel)]
         return [draft("action_rejected", dict(action=raw, reason=reason, evidence=evidence),
                       task_id=raw.get("task_id") if isinstance(raw, dict) else None)]
 
     try:
-        action = ACTION_ADAPTER.validate_python(raw).model_dump()
+        action = (dialogue.MenuChoice.model_validate(raw) if corpus_break else ACTION_ADAPTER.validate_python(raw)).model_dump()
     except ValidationError as error:
+        if corpus_break:
+            return reject("Choose one of the three non-task options provided for this turn.", restricted=True)
         return reject("Typed action schema rejected the request: " + str(error.errors(include_input=False)[0]["msg"]))
     department = state["departments"].get(department_id)
     if not department:
@@ -150,9 +177,14 @@ def process_action(state: dict, department_id: str, agent_id: str, raw: dict) ->
         if state["phase"] != "break" or department_id != expected:
             return reject("This non-task channel is unavailable in this condition or phase.", restricted=True)
         channel = "small_talk" if expected == "C" else "notes"
+        options = SAFE_UTTERANCES
+        message_metadata = {}
+        if corpus_break:
+            options, metadata = dialogue.turn_menu(state, agent, department_id)
+            message_metadata["break_turn"] = {**metadata, "choice": action["utterance_id"]}
         return [draft("action_accepted", {"action": action}, channel),
-                draft("message_sent", dict(text=SAFE_UTTERANCES[action["utterance_id"]],
-                    visibility="department" if expected == "C" else "private", recipient_id=None), channel)]
+                draft("message_sent", dict(text=options[action["utterance_id"]],
+                    visibility="department" if expected == "C" else "private", recipient_id=None, **message_metadata), channel)]
     if state["phase"] not in {"planning", "work_1", "work_2", "work_block_1", "work_block_2", "work"}:
         return reject("Work actions are allowed only during planning or work blocks.")
     if kind == "wait":
