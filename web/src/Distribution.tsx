@@ -28,7 +28,7 @@ export function LatencyDistribution({
         <g key={k}>
           <path
             d={`M25 ${112 - 83 * k}h400`}
-            stroke="#384357"
+            stroke="var(--edge)"
             strokeDasharray="3 5"
           />
           <text x="3" y={115 - 83 * k}>

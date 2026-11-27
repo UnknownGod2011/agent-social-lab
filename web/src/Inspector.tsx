@@ -2,7 +2,7 @@ import ChatTranscript from "./ChatTranscript";
 import { useState } from "react";
 import { hostedDemo } from "./api";
 import type { Agent, Arm, LabEvent, Run, State } from "./types";
-import { ARMS, COLORS, ROLES, money, nice, num } from "./types";
+import { ARMS, ROLES, money, nice, num } from "./types";
 import Creature from "./Creature";
 import Icon from "./Icon";
 import TenderEvidence from "./TenderEvidence";
@@ -33,12 +33,12 @@ const eventText = (e: LabEvent) => {
 };
 const eventColor = (e: LabEvent) =>
   e.severity === "error"
-    ? "#df9a89"
+    ? "var(--ink)"
     : e.channel === "small_talk"
-      ? "#e9b887"
+      ? "var(--secondary-ink)"
       : e.event_type.includes("completed") || e.event_type.includes("passed")
-        ? "#a9bcad"
-        : "#979da5";
+        ? "var(--muted-ink)"
+        : "var(--dim)";
 
 export function MetricsView({ run }: { run: Run }) {
   const depts = run.state?.departments ?? {};
@@ -867,14 +867,14 @@ export function CooperationGraph({
           <g key={i} transform={`translate(${x} ${y})`}>
             <circle
               r="23"
-              fill="#272e2c"
-              stroke={COLORS[i]}
+              fill="var(--raised)"
+              stroke={"var(--role-" + (i + 1) + ")"}
               strokeOpacity=".5"
             />
             <g transform="translate(-19 -20)">
               <Creature role={i} size={38} />
             </g>
-            <text y="37" textAnchor="middle" fontSize="10" fill="#a1a59f">
+            <text y="37" textAnchor="middle" fontSize="10" fill="var(--muted-ink)">
               {["Coordinator", "Builder", "Verifier", "Integrator"][i]}
             </text>
           </g>

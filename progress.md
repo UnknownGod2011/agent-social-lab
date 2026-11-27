@@ -25,3 +25,5 @@
 - The hosted release pipeline now reuses its recorded archive. New empty workspaces wait for an explicit experiment.
 - Verified 67 backend tests, 458 unchanged archive checkpoints, agent drag and return, private history, and transcript-to-event links.
 - Added a full-sweep department transition, compact TechText heading, and resource/outcome, condition profile and replication charts. Verified the completed sweep, graphics fallback, header interaction, three chart types and missing-cost states in Chromium. Published the recorded viewer on the stable Vercel preview.
+
+- Restored the three-quarter cutaway and added the Dark → Light → Classic blue switch. Compare all expands across the inspector, with checkpoint-aligned outcome, usage and channel rows. The fresh two-day local supplier-selection check recorded 39 work messages per department and eight table messages in C.

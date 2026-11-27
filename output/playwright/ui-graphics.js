@@ -10,10 +10,13 @@ async (page) => {
   await canvas.waitFor();
   await page.locator(".scene-scan").waitFor({ state: "hidden" });
   const rect = await canvas.boundingBox();
+  const viewport = await page.locator(".volume-view").boundingBox();
+  if (Math.abs(rect.height - viewport.height) > 3 || Math.abs(rect.width - viewport.width) > 3)
+    throw Error("3D canvas leaves a gap inside the scene rectangle");
   // Pick Nori through the real mesh. The hit target can shift with breathing and framing.
   let hit = null;
-  for (const v of [0.55, 0.5, 0.6, 0.45, 0.65]) {
-    for (const u of [0.68, 0.66, 0.7, 0.64, 0.72]) {
+  for (const v of [0.61, 0.58, 0.63, 0.55, 0.65]) {
+    for (const u of [0.61, 0.59, 0.63, 0.57, 0.65]) {
       const x = rect.x + rect.width * u, y = rect.y + rect.height * v;
       await page.mouse.move(x, y);
       if ((await page.locator(".mesh-tooltip").allTextContents()).some(t => t.includes("Nori"))) {
@@ -24,7 +27,7 @@ async (page) => {
     if (hit) break;
   }
   if (!hit) throw Error("Nori mesh could not be picked in the whole-room view");
-  const tx = hit.x + rect.width * 0.07, ty = hit.y + rect.height * 0.18;
+  const tx = rect.x + rect.width * 0.60, ty = rect.y + rect.height * 0.775;
   await page.mouse.down();
   await page.mouse.move(tx, ty, { steps: 9 });
   await page.mouse.up();

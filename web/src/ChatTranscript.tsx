@@ -1,7 +1,7 @@
 import { Fragment, useState, type CSSProperties } from "react";
 import Creature from "./Creature";
 import Icon from "./Icon";
-import { COLORS, ROLES, nice, type Agent, type LabEvent } from "./types";
+import { ROLES, nice, type Agent, type LabEvent } from "./types";
 
 type Props = {
   messages: LabEvent[];
@@ -102,7 +102,7 @@ export default function ChatTranscript({
                   (mine ? " align-right" : "") +
                   (e.channel === "notes" ? " journal-line" : "")
                 }
-                style={{ "--speaker": COLORS[roleIndex] } as CSSProperties}
+                style={{ "--speaker": "var(--role-" + (roleIndex + 1) + ")" } as CSSProperties}
               >
                 <div className="chat-avatar">
                   <Creature role={roleIndex} size={32} />

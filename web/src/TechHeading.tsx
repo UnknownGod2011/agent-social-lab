@@ -1,8 +1,15 @@
 import { lazy, memo, Suspense, useState } from "react";
+import type { Theme } from "./theme";
 import { useReducedMotion } from "./world/motion";
 const TechText = lazy(() => import("./vendor/TechText/TechText"));
 
-export default memo(function TechHeading({ text }: { text: string }) {
+export default memo(function TechHeading({
+  text,
+  theme,
+}: {
+  text: string;
+  theme: Theme;
+}) {
   const reduced = useReducedMotion();
   const [canvas] = useState(
     () => !!document.createElement("canvas").getContext("2d"),
@@ -39,8 +46,14 @@ export default memo(function TechHeading({ text }: { text: string }) {
             labels={false}
             draggable={false}
             selection={false}
-            color="#f2f2ef"
-            accentColor="#ffac88"
+            color={theme === "light" ? "#171717" : "#f2f2ef"}
+            accentColor={
+              theme === "blue"
+                ? "#ffac88"
+                : theme === "light"
+                  ? "#565656"
+                  : "#bbbbbb"
+            }
           />
         </Suspense>
       )}

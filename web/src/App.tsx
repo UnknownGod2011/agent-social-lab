@@ -1,4 +1,5 @@
 import TechHeading from "./TechHeading";
+import { useTheme } from "./theme";
 import { ReplayBuffer } from "./replayBuffer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -63,6 +64,7 @@ export default function App() {
             ? "compare"
             : "lab",
   );
+  const { theme, nextTheme, toggleTheme } = useTheme();
   const [arm, setArm] = useState<Arm>("C");
   const [filterArm, setFilterArm] = useState<Arm>("C");
   const [notebookKey, setNotebookKey] = useState(0);
@@ -75,7 +77,9 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
-  const [tab, setTab] = useState<InspectorTab>("Activity");
+  const [tab, setTab] = useState<InspectorTab>(
+    location.hash === "#conversations" ? "Conversations" : "Activity",
+  );
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [replay, setReplay] = useState<{
@@ -94,6 +98,14 @@ export default function App() {
   const replayRequest = useRef(0);
   const frames = useRef<ReplayBuffer | null>(null);
   const lastDisplayed = useRef(0);
+  const transcriptLink = useRef(location.hash === "#conversations");
+
+  useEffect(() => {
+    if (!loading && run && transcriptLink.current) {
+      transcriptLink.current = false;
+      document.getElementById("notebook")?.scrollIntoView({ block: "start" });
+    }
+  }, [loading, run]);
 
   useEffect(() => {
     function openRegistry() {
@@ -162,6 +174,13 @@ export default function App() {
         setFilterArm(defaultArm);
         setNotebookKey((k) => k + 1);
         localStorage.setItem("btt-selected-run", id);
+        if (!opening) {
+          const url = new URL(location.href);
+          if (url.searchParams.has("run")) {
+            url.searchParams.set("run", id);
+            window.history.replaceState(null, "", url);
+          }
+        }
         setRun(detail);
         setEvents(trace);
         lastDisplayed.current = entry?.seq ?? detail.seq ?? 0;
@@ -191,7 +210,8 @@ export default function App() {
         ]);
         setHealth(metadata);
         setRuns(records);
-        const initial =
+        const requested = new URLSearchParams(location.search).get("run");
+        const initial = records.find((r) => r.id === requested) ??
           records.find(
             (r) => r.id === localStorage.getItem("btt-selected-run"),
           ) ?? records[0];
@@ -557,6 +577,12 @@ export default function App() {
             </div>
           )}
           <div className="topbar-end">
+            <button className="theme-toggle" onClick={toggleTheme}
+              aria-label={`Switch to ${nextTheme} mode`}
+              title={`Switch to ${nextTheme} mode`}>
+              <Icon name={nextTheme === "light" ? "sun" : nextTheme === "blue" ? "orbit" : "moon"} size={15} />
+              <span>{theme === "blue" ? "Classic blue" : theme === "light" ? "Light" : "Dark"}</span>
+            </button>
             <span className="connection">
               <span
                 className={`status-dot ${connected || hostedDemo ? "" : "sleep"}`}
@@ -639,6 +665,7 @@ export default function App() {
                 <div className="experiment-heading">
                   <div className="heading-copy">
                     <TechHeading
+                      theme={theme}
                       text={
                         view === "lab"
                           ? "Observation deck"
@@ -870,6 +897,7 @@ export default function App() {
                       key={"room-" + run.id}
                       state={state}
                       run={shownRun}
+                      seq={replay?.seq ?? run.seq ?? 0}
                       events={visibleEvents}
                       arm={arm}
                       onArm={(id) => {

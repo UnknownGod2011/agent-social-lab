@@ -24,7 +24,6 @@ export type Prop = Point & {
   art?: Illustration;
   radius?: [number, number];
   base?: boolean;
-  finish?: "floor" | "wall";
 };
 export const WIDTH = 12,
   DEPTH = 8;
@@ -101,7 +100,6 @@ export function buildRoom(
     };
   }
   const f = item(6, 4, undefined, true);
-  f.prop.finish = "floor";
   f.box(0, -0.47, 0, 12.3, 0.45, 8.3, "#263753");
   f.box(0, -0.14, 0, 12.16, 0.13, 8.16, "#88a5b3");
   f.box(0, -0.04, 0, 12.12, 0.1, 8.12, "#506682");
@@ -124,13 +122,11 @@ export function buildRoom(
       true,
     );
   const back = item(6, -0.13, undefined, true);
-  back.prop.finish = "wall";
   back.box(0, 0, 0, 12.32, 2.85, 0.25, "#4c617f");
   back.box(0, 2.84, 0, 12.35, 0.12, 0.35, "#96a7bc");
   back.box(0, 0.25, 0.15, 12.2, 0.12, 0.14, "#8fa4b8");
   back.box(0, 2.64, 0.15, 12.2, 0.04, 0.08, "#c1e6e5", true);
   const left = item(-0.14, 4, undefined, true);
-  left.prop.finish = "wall";
   left.box(0, 0, 0, 0.27, 2.86, 8.25, "#3c5571");
   left.box(0, 2.84, 0, 0.37, 0.12, 8.35, "#9aafba");
   left.box(0.16, 0.25, 0, 0.13, 0.12, 8.14, "#8fa4b8");

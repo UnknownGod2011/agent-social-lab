@@ -5,7 +5,6 @@ import Icon from "../Icon";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { SceneProps } from "./Room2D";
 import { fitWholeRoom, roomBounds } from "./framing";
-import { roomInterior } from "./interior3d";
 import { crew, animateCrew } from "./crew3d";
 import { stations } from "./layout";
 import { poseLabels, workGesture } from "../Creature";
@@ -33,7 +32,7 @@ export default function Room3D(
       const canvas = document.createElement("canvas"),
         context = canvas.getContext("webgl2", {
           antialias: true,
-          alpha: false,
+          alpha: true,
           powerPreference: "low-power",
         });
       if (!context) throw new Error("WebGL unavailable");
@@ -41,7 +40,7 @@ export default function Room3D(
         canvas,
         context,
         antialias: true,
-        alpha: false,
+        alpha: true,
       });
     } catch {
       setError("WebGL is unavailable on this device.");
@@ -51,12 +50,12 @@ export default function Room3D(
     let alive = true;
     renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.shadowMap.type = T.PCFShadowMap;
     host.appendChild(renderer.domElement);
     const canvas = renderer.domElement;
     canvas.setAttribute("aria-label", "Orbitable 3D department");
     const scene = new T.Scene();
-    scene.background = new T.Color("#1e2b44");
+    renderer.setClearColor(0, 0);
     const camera = new T.OrthographicCamera(-10, 10, 6, -6, 0.1, 120),
       controls = new OrbitControls(camera, canvas);
     controls.enableDamping = !latest.current.reduced;
@@ -70,11 +69,7 @@ export default function Room3D(
     const bounds = roomBounds(props.room);
     const center = bounds.getCenter(new T.Vector3());
     const half = bounds.getSize(new T.Vector3()).multiplyScalar(0.5);
-    const homeOffset = new T.Vector3().setFromSphericalCoords(
-      20,
-      T.MathUtils.degToRad(60),
-      T.MathUtils.degToRad(10),
-    );
+    const homeOffset = new T.Vector3(13, 11, 16);
     let aspect = 1,
       lastAzimuth = NaN,
       lastPolar = NaN;
@@ -99,7 +94,6 @@ export default function Room3D(
       updateFrame();
     };
     reset();
-    scene.add(roomInterior());
     scene.add(new T.HemisphereLight("#f0f0ff", "#898099", 2.25));
     const sun = new T.DirectionalLight("#ffdab3", 2.65);
     sun.position.set(2, 14, 9);
@@ -125,7 +119,7 @@ export default function Room3D(
     const transform = new T.Object3D();
     for (const shape of ["box", "round", "leaf"] as const) {
       const solids = props.room
-        .flatMap((p) => (p.finish ? [] : p.pieces))
+        .flatMap((p) => p.pieces)
         .filter((s) => s.shape === shape);
       const mesh = new T.InstancedMesh(
         shape === "box" ? box : shape === "round" ? cyl : sphere,
@@ -236,7 +230,7 @@ export default function Room3D(
       aspect = width / height;
       lastAzimuth = NaN;
       updateFrame();
-      renderer.setSize(width, height);
+      renderer.setSize(width, height, false);
     });
     observer.observe(host);
     const ray = new T.Raycaster(),

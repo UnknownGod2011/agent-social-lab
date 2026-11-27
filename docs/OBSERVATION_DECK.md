@@ -28,7 +28,7 @@ flowchart LR
 | `world/layout.ts`, `world/art.ts` | Describe stations, furniture solids, shared wall illustrations, floor bounds, and station destinations in room coordinates. The vector renderer projects each object. The 3D renderer instances the same solids and textures the illustrated panels. |
 | `world/motion.ts` | Finds a path on a quarter-unit floor grid around furniture and inset bounds. A manual drop schedules an outbound walk, a short pause, and a return to the recorded station. A new engine location supersedes a manual excursion. A rewind resets local positions. |
 | `Creature.tsx`, `world/crew3d.ts` | Draw the four crew members and map recorded phase, location, work actions and messages to poses. Speaking is tied to a recorded table message. The builder alternates key presses, the verifier scans a sheet and the coordinator and integrator write. The 3D rig controls the neck, eyelids, paws, feet, equipment and tail. Idle glances and hand motions are illustrative. |
-| `world/Room2D.tsx`, `world/Room3D.tsx`, `world/framing.ts`, `world/interior3d.ts` | Render the edge-to-edge room and perform pointer picking. The default camera frames all workstations and beds with a little clearance. The continuous interior wall panels and floor tiles fill the rectangle at every supported orbit angle. Resizing preserves manual zoom and focus. Reset camera restores the whole-room view. The 2D view is available when WebGL fails. |
+| `world/Room2D.tsx`, `world/Room3D.tsx`, `world/framing.ts` | Render the floor plan and its colored 3D cutaway and perform pointer picking. The 3D canvas fills the scene rectangle. The orthographic camera fits the finite floor, walls, workstations and beds at its original three-quarter angle. Resizing preserves manual zoom and focus. Reset camera restores the whole-room view. The 2D view is available when WebGL fails. |
 | `TeamReadout.tsx`, `Analytics.tsx`, `Distribution.tsx`, `MessagePaths.tsx` | Expose outcomes, usage, and message counts by arm, interval charts, latency histograms and links from communication edges to their source events. |
 | `replayBuffer.ts`, `scripts/pack_public_replay.py` | The browser retains up to 48 exact checkpoints. The public archive packages 16 adjacent snapshots per request. Private playback reads ahead four individual FastAPI snapshots. Rapid scrubbing coalesces uncached requests. The previous frame stays visible until the next recorded state and metrics arrive together. |
 | `ChatTranscript.tsx` | Displays chronological messages, speaker alignment, UTC times, channel and day dividers, private journal boundaries and expandable raw event receipts. |
@@ -40,6 +40,16 @@ flowchart LR
 | `deck.css`, `public/assets/fonts/` | Responsive layout, motion preferences and self-hosted Bricolage Grotesque and DM Sans with their font licenses. |
 
 File paths in the table are relative to `web/src/`, except for `web/public/assets/` and the explicit vendor path. Browser scene components have no mutation API. Changing a camera, selecting a pet or dragging to the table cannot initiate provider calls, reveal new facts to agents or write an event.
+
+## Appearance and side-by-side viewing
+
+The header switch cycles through Dark, Light and Classic blue. A fresh browser starts in Dark. The preference is stored locally and also applies to saved replays. The room materials, crew designs and condition colors persist across all three themes. Light mode uses darker series colors for legibility on paper-colored panels.
+
+**Compare all** folds away the inspector. Each configured department gets its own column and room preview. Outcomes, Usage and Channels use the same measurement definitions as the compact readout. Each column can reveal its latest work message and jump to the event. Selecting a room restores the inspector. A brief particle transition accompanies the change when motion is enabled.
+
+The browser accepts `?run=<saved-run-id>#conversations` for opening a saved transcript. The selected run must exist in that workspace. Procurement work messages carry private score disclosures. Under the current protocol, Department C's break topics come from a bounded non-task catalog. Initializing a goal does not change that treatment.
+
+The theme and comparison browser regression is in `output/playwright/ui-themes.js`. At a 1440-pixel viewport the three room columns measured 347 pixels each. At 390 pixels all three shared the same row with no page overflow. The graphics check covers mesh picking, a walk started in 3D and completed in 2D, return to station and the WebGL fallback. The restored camera was visually checked on both viewport sizes.
 
 ## Reading the measurements
 

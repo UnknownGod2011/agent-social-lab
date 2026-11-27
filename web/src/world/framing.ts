@@ -1,7 +1,7 @@
 import * as T from "three";
 import type { Prop } from "./layout";
 
-// Measure the furnished area once; the continuous wall and floor finishes extend to the view edges.
+// Include the cutaway walls and platform when fitting the whole-room camera.
 export function roomBounds(room: Prop[]) {
   const bounds = new T.Box3();
   const corner = new T.Vector3();

@@ -212,7 +212,7 @@ export default function Analytics({
                     </text>
                     <path
                       d={`M36 ${126 - v}H465`}
-                      stroke="#323e52"
+                      stroke="var(--edge)"
                       strokeDasharray="3 4"
                     />
                   </g>
@@ -232,7 +232,7 @@ export default function Analytics({
                         cy={y}
                         r={4 + i * 0.75}
                         fill={ARMS[r.id].color}
-                        stroke="#182032"
+                        stroke="var(--surface)"
                         onClick={() => onReplay(a.seq)}
                       >
                         <title>
@@ -310,13 +310,13 @@ export default function Analytics({
                 series={
                   key === "Conversations"
                     ? [
-                        { label: "Work", color: "#80bfce" },
-                        { label: "Social", color: "#e7a67e" },
-                        { label: "Journal", color: "#bba3db" },
+                        { label: "Work", color: "var(--series-1)" },
+                        { label: "Social", color: "var(--series-3)" },
+                        { label: "Journal", color: "var(--series-2)" },
                       ]
                     : [
-                        { label: "Disclosed", color: "#80bfce" },
-                        { label: "Available at award", color: "#e7a67e" },
+                        { label: "Disclosed", color: "var(--series-1)" },
+                        { label: "Available at award", color: "var(--series-2)" },
                       ]
                 }
               />

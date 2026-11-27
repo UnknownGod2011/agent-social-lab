@@ -1,62 +1,64 @@
 import { useState } from "react";
-import { ARMS, money, num, type Run } from "./types";
-const views = ["Outcomes", "Usage", "Channels"] as const;
+import { ARMS, type Run } from "./types";
+import { lenses, teamMeasures, type Lens } from "./teamMeasures";
+
+export function LensPicker({
+  lens,
+  onChange,
+}: {
+  lens: Lens;
+  onChange: (value: Lens) => void;
+}) {
+  return (
+    <div
+      className="console-tabs"
+      role="group"
+      aria-label="Department measurements"
+    >
+      {lenses.map((value) => (
+        <button
+          key={value}
+          aria-pressed={value === lens}
+          onClick={() => onChange(value)}
+        >
+          {value}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function TeamReadout({ run, seq }: { run: Run; seq: number }) {
-  const [view, setView] = useState<(typeof views)[number]>("Outcomes");
-  const purchasing = run.config.environment === "supplier_selection_v1",
-    mock = run.config.provider === "mock";
+  const [lens, setLens] = useState<Lens>("Outcomes");
+  const measures = teamMeasures(run, lens);
   return (
     <section className="team-readout" aria-label="Department measurements">
       <div className="readout-head">
         <div>
           <h2>Department readout</h2>
           <small>
-            Event #{seq} · {mock ? "Synthetic recording" : run.config.model}
+            Event #{seq} ·{" "}
+            {run.config.provider === "mock"
+              ? "Synthetic recording"
+              : run.config.model}
           </small>
         </div>
-        <div className="console-tabs">
-          {views.map((v) => (
-            <button
-              key={v}
-              aria-pressed={v === view}
-              onClick={() => setView(v)}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
+        <LensPicker lens={lens} onChange={setLens} />
       </div>
       <table>
         <thead>
           <tr>
             <th scope="col">Team</th>
-            {(view === "Outcomes"
-              ? [
-                  purchasing ? "Yield" : "Progress",
-                  purchasing ? "Awards" : "Passed",
-                  purchasing ? "Scores shared" : "Handoffs",
-                  "Work turns",
-                ]
-              : view === "Usage"
-                ? [
-                    mock ? "Synthetic calls" : "Model calls",
-                    "Tokens",
-                    "Est. cost",
-                    "Billed cost",
-                  ]
-                : ["Work", "Table", "Journal", "Total"]
-            ).map((label) => (
-              <th scope="col" key={label}>
-                {label}
+            {measures.map((m) => (
+              <th scope="col" key={m.label}>
+                {m.label}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {run.config.arms.map((id) => {
-            const m = run.metrics?.departments[id],
-              pct = m?.[purchasing ? "decision_yield" : "completion"],
-              notes = Number(m?.journal_entries ?? 0);
+            const metrics = run.metrics?.departments[id];
             return (
               <tr key={id}>
                 <th scope="row">
@@ -68,57 +70,24 @@ export default function TeamReadout({ run, seq }: { run: Run; seq: number }) {
                   </span>
                   <span className="full-condition">{ARMS[id].title}</span>
                 </th>
-                {view === "Outcomes" ? (
-                  <>
-                    <td>
-                      <span className="yield-value">
-                        {typeof pct === "number"
-                          ? (100 * pct).toFixed(1) + "%"
-                          : "—"}
-                      </span>
-                      <i className="yield-track">
-                        <b
-                          style={{
-                            width:
-                              (typeof pct === "number" ? 100 * pct : 0) + "%",
-                            background: ARMS[id].color,
-                          }}
-                        />
-                      </i>
-                    </td>
-                    <td>{m ? m.completed + "/" + m.total : "—"}</td>
-                    <td>
-                      {num(
-                        m?.[purchasing ? "disclosed_score_cells" : "handoffs"],
+                {measures.map((m) => {
+                  const fraction = metrics && m.fraction?.(metrics);
+                  return (
+                    <td key={m.label}>
+                      {metrics ? m.value(metrics) : "—"}
+                      {typeof fraction === "number" && (
+                        <i className="yield-track">
+                          <b
+                            style={{
+                              width: 100 * fraction + "%",
+                              background: ARMS[id].color,
+                            }}
+                          />
+                        </i>
                       )}
                     </td>
-                    <td>{num(m?.work_turns)}</td>
-                  </>
-                ) : view === "Usage" ? (
-                  <>
-                    <td>{num(m?.model_calls)}</td>
-                    <td>{num(m?.total_tokens)}</td>
-                    <td>{money(m?.estimated_cost_usd)}</td>
-                    <td>
-                      {mock
-                        ? "Offline"
-                        : m?.actual_cost_usd == null
-                          ? "Unreported"
-                          : money(m.actual_cost_usd)}
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td>
-                      {m
-                        ? num(m.messages - m.small_talk_messages - notes)
-                        : "—"}
-                    </td>
-                    <td>{num(m?.small_talk_messages)}</td>
-                    <td>{num(m?.journal_entries)}</td>
-                    <td>{num(m?.messages)}</td>
-                  </>
-                )}
+                  );
+                })}
               </tr>
             );
           })}

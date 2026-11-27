@@ -159,22 +159,22 @@ export const ARMS: Record<
   D: {
     title: "Passive conversation",
     subtitle: "Read a matched conversation",
-    color: "#66cbb9",
+    color: "var(--series-4)",
   },
   A: {
     title: "Work only",
     subtitle: "Silent breaks · shared project",
-    color: "#81cede",
+    color: "var(--series-1)",
   },
   B: {
     title: "Solo reflection",
     subtitle: "Private journal · shared project",
-    color: "#b9a2ed",
+    color: "var(--series-2)",
   },
   C: {
     title: "Work + small talk",
     subtitle: "Table conversation · shared project",
-    color: "#f2a076",
+    color: "var(--series-3)",
   },
 };
 export const ROLES = ["coordinator", "builder", "verifier", "integrator"];

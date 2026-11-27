@@ -77,7 +77,7 @@ export default function MessagePaths({
             height="12"
             patternUnits="userSpaceOnUse"
           >
-            <circle cx="1" cy="1" r=".8" fill="#45516b" />
+            <circle cx="1" cy="1" r=".8" fill="var(--edge)" />
           </pattern>
         </defs>
         <rect width="390" height="207" rx="12" fill={`url(#${uid})`} />
@@ -103,12 +103,12 @@ export default function MessagePaths({
                 d={path}
                 stroke={
                   e.kind === "Table"
-                    ? "#eaa67b"
+                    ? "var(--series-3)"
                     : e.kind === "Cooperation"
-                      ? "#bc9ce7"
-                      : "#71b9c9"
+                      ? "var(--series-2)"
+                      : "var(--series-1)"
                 }
-                strokeDasharray={e.kind === "Table" ? "4 3" : undefined}
+                strokeDasharray={e.kind === "Table" ? "4 3" : e.kind === "Cooperation" ? "1 3" : undefined}
                 strokeWidth={1 + Math.log2(1 + e.events.length)}
                 fill="none"
                 opacity={e === edge ? 1 : 0.63}
@@ -118,7 +118,7 @@ export default function MessagePaths({
         })}
         {agents.map((a, i) => (
           <g key={a.id} transform={`translate(${points[i]})`}>
-            <circle r="24" fill="#24324b" stroke="#61738d" />
+            <circle r="24" fill="var(--raised)" stroke="var(--strong-rule)" />
             <g transform="translate(-23 -25)">
               <Creature role={i} size={46} />
             </g>
@@ -128,8 +128,8 @@ export default function MessagePaths({
           </g>
         ))}
         <g transform="translate(195 106)">
-          <circle r="12" fill="#30405b" stroke="#91a5bb" />
-          <path d="M-4 1h8m-6-4h4m-4 8h4" stroke="#e4cdad" />
+          <circle r="12" fill="var(--edge)" stroke="var(--muted-ink)" />
+          <path d="M-4 1h8m-6-4h4m-4 8h4" stroke="var(--ink)" />
           <text y="25" textAnchor="middle">
             Department
           </text>

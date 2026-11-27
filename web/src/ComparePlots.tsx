@@ -183,7 +183,7 @@ export function OutcomesPlot({ runs }: { runs: Run[] }) {
                       {points.map((pt) => pt.arm).join(" / ")} ·{" "}
                       {fmt(p.x, xKey)} · {fmt(p.y, yKey)}
                     </title>
-                    <circle r={9.5} fill="#192333" />
+                    <circle r={9.5} fill="var(--surface)" />
                     {points.map((pt, i) => (
                       <circle
                         key={pt.arm}
@@ -275,7 +275,7 @@ export function OutcomesPlot({ runs }: { runs: Run[] }) {
                           style={
                             numeric(val)
                               ? {
-                                  background: `rgba(90,169,184,${0.09 + (max ? val / max : 0) * 0.42})`,
+                                  background: `color-mix(in srgb, var(--series-1) ${8 + (max ? val / max : 0) * 20}%, var(--surface))`,
                                 }
                               : undefined
                           }
