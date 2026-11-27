@@ -130,15 +130,10 @@ function Camera({
         </span>
       )}
       {mode === "2D" && (
-        <>
-          <div className="camera-tag">
-            <i /> {d.id} <b>/</b> {mode === "2D" ? "Floor plan" : "Orbital"}
-          </div>
-          <div className="camera-time">
-            <Icon name={state.phase === "sleep" ? "moon" : "clock"} size={12} />
-            Day {state.virtual_day} · {minute(state.virtual_minute)}
-          </div>
-        </>
+        <div className="camera-time">
+          <Icon name={state.phase === "sleep" ? "moon" : "clock"} size={12} />
+          Day {state.virtual_day} · {minute(state.virtual_minute)}
+        </div>
       )}
     </div>
   );

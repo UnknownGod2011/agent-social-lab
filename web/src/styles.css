@@ -270,26 +270,6 @@ input[type="checkbox"] {
 .status-dot.pulsing {
   animation: pulse 2s infinite;
 }
-.profile-chip {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--neutral-rule, #3a465d);
-  border-radius: 50%;
-  background: var(--neutral-edge, #27303f);
-  font-size: 11px;
-  font-weight: 600;
-  position: relative;
-}
-.profile-chip span {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  right: -1px;
-  bottom: -1px;
-  border-radius: 50%;
-  background: var(--neutral-muted-ink, #98a3b6);
-  border: 2px solid var(--neutral-surface, #14181f);
-}
 main {
   max-width: 1920px;
   margin: auto;
@@ -2639,11 +2619,6 @@ main {
   .connection {
     display: none;
   }
-  .profile-chip {
-    height: 28px;
-    width: 28px;
-    font-size: 10px;
-  }
   main {
     padding: 23px 18px 0;
   }
@@ -3024,10 +2999,6 @@ main {
   .brand-wordmark span {
     font-size: 5px;
     letter-spacing: 1.5px;
-  }
-  .profile-chip {
-    height: 26px;
-    width: 26px;
   }
   .topbar-end {
     display: none;

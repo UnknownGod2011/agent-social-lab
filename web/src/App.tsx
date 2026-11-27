@@ -1,4 +1,5 @@
 import TechHeading from "./TechHeading";
+import { ProfileOrb, WorkspaceAtmosphere } from "./Atmosphere";
 import { useTheme } from "./theme";
 import { ReplayBuffer } from "./replayBuffer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -552,6 +553,7 @@ export default function App() {
         </button>
       </aside>
       <div className="main-shell">
+        <WorkspaceAtmosphere theme={theme} />
         <header className="topbar">
           <div className="brand-wordmark">
             beyond task talk<span>RESEARCH LAB</span>
@@ -593,13 +595,7 @@ export default function App() {
                   ? "Engine connected"
                   : "Connecting"}
             </span>
-            <button
-              className="profile-chip"
-              aria-label="About local researcher workspace"
-              onClick={() => setAbout(true)}
-            >
-              R<span />
-            </button>
+            <ProfileOrb theme={theme} open={() => setAbout(true)} />
           </div>
         </header>
         <main>

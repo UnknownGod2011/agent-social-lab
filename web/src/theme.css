@@ -145,7 +145,6 @@
   border-color: var(--strong-rule);
 }
 :root:not([data-theme="blue"]) {
-  .camera-tag,
   .camera-time {
     background: var(--surface);
     color: var(--ink);

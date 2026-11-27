@@ -27,3 +27,4 @@
 - Added a full-sweep department transition, compact TechText heading, and resource/outcome, condition profile and replication charts. Verified the completed sweep, graphics fallback, header interaction, three chart types and missing-cost states in Chromium. Published the recorded viewer on the stable Vercel preview.
 
 - Restored the three-quarter cutaway and added the Dark → Light → Classic blue switch. Compare all expands across the inspector, with checkpoint-aligned outcome, usage and channel rows. The fresh two-day local supplier-selection check recorded 39 work messages per department and eight table messages in C.
+- Published the Soft Aurora profile orb, translucent Splash Cursor and subtle Strands header. Verified motion, fade-out, the information dialog, 2D frame sizing, the 3D renderer, reduced motion and touch-only fallback in Chromium.
