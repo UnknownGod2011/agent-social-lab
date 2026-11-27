@@ -1,5 +1,11 @@
 # Final handoff — Beyond Task Talk Lab
 
+## Observation deck update
+
+The current web release and its verification are described in [Observation deck](OBSERVATION_DECK.md). The Vercel preview serves the existing public recording. Private execution, history replay and resource comparisons are available in the local workspace.
+
+Open [the 3D work turn](https://beyond-task-talk-lab-preview.vercel.app/?scene=3d&moment=work) to inspect the crew at their desks. In **Conversations**, expand a message receipt to inspect its original record or replay that exact event. **Compare** includes a resource/outcome plot, a per-condition metric matrix, and means with sample standard deviations for compatible repeated runs. All three use saved measurements.
+
 For the current release, see the [research handoff](RESEARCH_HANDOFF.md) and the [paper protocol](RESEARCH_PROTOCOL.md). The historical task-board release record begins below.
 
 ## Open and run

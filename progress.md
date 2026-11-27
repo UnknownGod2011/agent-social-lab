@@ -18,3 +18,10 @@
 - Fresh checkout: verified without `.env` or provider keys; completed A/C 12/12 each with 156 synthetic calls and no model network calls.
 - Current: all implementation and verification complete. Local server remains at http://127.0.0.1:8000; source publication target is https://github.com/UnknownGod2011/agent-social-lab .
 - Blocked: none. Some keys that could list models were denied generation; the pool disabled them and successfully failed over. No mock output was substituted into the live run.
+
+## Observation deck redesign · 27 November 2026
+
+- Completed the shared 2D/3D room, crew poses, temporary visual walks, contextual inspector, event charts and restorable history.
+- The hosted release pipeline now reuses its recorded archive. New empty workspaces wait for an explicit experiment.
+- Verified 67 backend tests, 458 unchanged archive checkpoints, agent drag and return, private history, and transcript-to-event links.
+- Added a full-sweep department transition, compact TechText heading, and resource/outcome, condition profile and replication charts. Verified the completed sweep, graphics fallback, header interaction, three chart types and missing-cost states in Chromium. Published the recorded viewer on the stable Vercel preview.

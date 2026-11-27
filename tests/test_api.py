@@ -7,6 +7,7 @@ def test_api_controls_config_exports_and_comparison(tmp_path, monkeypatch):
     monkeypatch.setenv("LAB_DB", str(tmp_path / "api.sqlite3"))
     with TestClient(app) as client:
         assert client.get("/api/health").status_code == 200
+        assert client.get("/api/runs").json() == []
         run = client.post("/api/runs", json={"days": 1, "tick_ms": 0}).json()
         run_id = run["id"]
         assert run["state"]["departments"]["A"]["initial_hash"] == run["state"]["departments"]["C"]["initial_hash"]

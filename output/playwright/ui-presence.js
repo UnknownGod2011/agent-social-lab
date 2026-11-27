@@ -1,0 +1,88 @@
+async (page) => {
+  const base = "http://127.0.0.1:8055";
+  const requests = [], errors = [];
+  const button = name => page.getByRole("button",{name, exact:true});
+  page.on("pageerror", e => errors.push(e.message));
+  await page.route("**/replay-pages/*.json", async route => {
+    requests.push(route.request().url().split("/").at(-1));
+    await new Promise(r=>setTimeout(r,300));
+    await route.continue();
+  });
+  await page.emulateMedia({reducedMotion:"no-preference"});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.goto(base + "/?scene=3d&moment=work");
+  await page.locator(".three-stage canvas").waitFor();
+  await page.locator(".scene-scan").waitFor({state:"hidden"});
+  const scrubber = page.getByLabel("Timeline replay scrubber");
+  const start = Number(await scrubber.inputValue());
+  if (start !== 94) throw Error("Failed to open the recorded work checkpoint: "+start);
+  const canvas = page.locator(".three-stage canvas");
+  const firstDraw = await canvas.screenshot();
+  await page.waitForTimeout(260);
+  if (firstDraw.equals(await canvas.screenshot())) throw Error("3D work pose remained still");
+  await page.screenshot({path:"output/playwright/crew-working-3d.png"});
+  await button("2D view").click();
+  const builder = page.locator('[data-agent="C-builder"] [data-gesture="type"] .right-paw');
+  await builder.waitFor();
+  const movement = await builder.evaluate(async el => {
+    const a = getComputedStyle(el).transform;
+    await new Promise(r => setTimeout(r,95));
+    return a !== getComputedStyle(el).transform;
+  });
+  if (!movement) throw Error("Builder paw did not animate during the recorded work turn");
+  await page.locator('[data-agent="C-verifier"] [data-gesture="review"]').waitFor();
+  await page.screenshot({path:"output/playwright/crew-working-2d.png"});
+  await page.evaluate(() => {
+    window.scanCount = 0;
+    new MutationObserver(changes => {
+      for (const change of changes) for (const node of change.addedNodes)
+        if(node.nodeType===1 && (node.matches(".scene-scan") || node.querySelector(".scene-scan"))) window.scanCount++;
+    }).observe(document.body,{subtree:true,childList:true});
+  });
+  const before = requests.length;
+  await page.locator(".run-actions").getByRole("button",{name:"Play replay"}).click();
+  await page.waitForFunction(s => Number(document.querySelector('[aria-label="Timeline replay scrubber"]').value) >= s+19, start,{timeout:20000});
+  await page.locator(".run-actions").getByRole("button",{name:"Pause replay"}).click();
+  if(await page.evaluate(()=>window.scanCount)) throw Error("Replay obscured the room between frames");
+  const pagesRead = requests.length - before;
+  if (pagesRead > 4) throw Error("Unexpected per-frame replay requests: "+pagesRead);
+  await page.getByRole("button",{name:"Return to results",exact:true}).first().click();
+  await page.getByRole("tab",{name:"Conversations"}).click();
+  await button("Small talk").click();
+  const thread=page.getByRole("region",{name:"Recorded conversation thread"});
+  const rows=thread.locator(".conversation");
+  const messages=await rows.locator(".chat-text").allTextContents();
+  const [run]=await (await page.request.get(base+"/demo/api/runs.json")).json();
+  const events=await(await page.request.get(base+"/demo/api/runs/"+run.id+"/events.json")).json();
+  const source=events.filter(e=>e.department_id==="C" && e.event_type==="message_sent" && e.channel==="small_talk");
+  if (JSON.stringify(messages)!==JSON.stringify(source.map(e=>e.payload_json.text))) throw Error("Transcript order or wording differs from stored events");
+  await thread.getByLabel("Right-aligned speaker").selectOption("builder");
+  if(!await thread.locator(".align-right .chat-author").first().textContent().then(v=>v.includes("Mochi"))) throw Error("Speaker focus failed");
+  await thread.screenshot({path:"output/playwright/crew-chat.png"});
+  await rows.first().locator("summary").click();
+  const detail=JSON.parse(await rows.first().locator("pre").textContent());
+  if(detail.event_id!==source[0].event_id) throw Error("Wrong source event in chat");
+  await rows.first().getByRole("button",{name:"Replay this message"}).click();
+  await page.waitForFunction(s=>document.querySelector(".replay-banner")?.textContent.includes("Event #"+s+" of"),source[0].seq);
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole("tab",{name:"Conversations"}).click();
+  await thread.scrollIntoViewIfNeeded();
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)) throw Error("Mobile transcript overflow");
+  await page.setViewportSize({width:1440,height:1000});
+  await page.getByRole("navigation").getByRole("button",{name:"Compare"}).click();
+  const tradeoff=page.locator(".tradeoff");
+  await tradeoff.waitFor();
+  await page.getByLabel("Resource axis").selectOption("actual_cost_usd");
+  await page.getByText("The provider did not report a charge for this run.").waitFor();
+  await page.getByLabel("Resource axis").selectOption("model_calls");
+  await page.getByLabel("Parameter to compare across runs").selectOption("estimated_cost_usd");
+  await page.locator(".spread-plot").waitFor();
+  if(await page.locator(".profile-map tbody tr").count()!==3) throw Error("Missing condition profile");
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.screenshot({path:"output/playwright/deck-comparison.png"});
+  await page.setViewportSize({width:390,height:844});
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)) throw Error("Mobile comparison overflow");
+  await page.unroute("**/replay-pages/*.json");
+  if(errors.length) throw Error(errors.join("\n"));
+  return {workCheckpoint:start,verifiedWorkGestures:2,eventsPlayed:19,addedPageRequests:pagesRead,sceneReinitializations:0,messagesMatched:messages.length,linkedEvent:detail.seq,mobileOverflow:false,errors};
+}

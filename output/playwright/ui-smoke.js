@@ -1,7 +1,7 @@
 async (page) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto("http://127.0.0.1:8000");
+  await page.goto("http://127.0.0.1:5173");
   await page.getByRole("button", {name: "Reset demo", exact: true}).waitFor();
   await page.getByRole("button", {name: "Reset demo", exact: true}).click();
   await page.getByRole("button", {name: "Start experiment", exact: true}).waitFor();
@@ -24,7 +24,7 @@ async (page) => {
   }
   await page.getByRole("tab", {name: "Replay", exact: true}).click();
   await page.getByRole("slider", {name: "Replay event", exact: true}).fill("0");
-  await page.getByText("Viewing recorded state at event #0.", {exact: false}).waitFor();
+  await page.getByText("Recorded state · Event #0", {exact: false}).waitFor();
   await page.getByRole("button", {name: "Return to live", exact: true}).first().click();
   await page.getByRole("button", {name: "Export", exact: true}).click();
   const downloading = page.waitForEvent("download");
@@ -32,11 +32,11 @@ async (page) => {
   const download = await downloading;
   await download.saveAs("output/playwright/ui-events.jsonl");
   await page.getByRole("button", {name: "Compare", exact: true}).click();
-  await page.getByRole("heading", {name: "Did the break make a difference?"}).waitFor();
-  await page.getByRole("button", {name: "Experiment", exact: true}).click();
+  await page.getByRole("heading", {name: "Resources and outcomes"}).waitFor();
+  await page.getByRole("button", {name: "Controls", exact: true}).click();
   await page.getByRole("button", {name: "Preview maximum usage", exact: true}).click();
   await page.getByText("Logical calls", {exact: true}).waitFor();
-  await page.getByRole("button", {name: "Live lab", exact: true}).last().click();
+  await page.getByRole("button", {name: "Lab", exact: true}).last().click();
   await page.screenshot({path: "output/playwright/desktop.png", fullPage: true});
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   await page.setViewportSize({width: 390, height: 844});

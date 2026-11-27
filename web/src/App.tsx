@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import TechHeading from "./TechHeading";
+import { ReplayBuffer } from "./replayBuffer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   controlRun,
@@ -8,12 +10,23 @@ import {
   getRun,
   getRuns,
   hostedDemo,
-  replayRun,
 } from "./api";
-import type { Agent, Config, LabEvent, Metrics, Run, State } from "./types";
+import type {
+  Agent,
+  Arm,
+  Config,
+  LabEvent,
+  Metrics,
+  Run,
+  State,
+} from "./types";
 import { DEFAULT_CONFIG, minute, money, nice, num } from "./types";
 import Icon from "./Icon";
-import Office, { Creature } from "./Office";
+import Creature from "./Creature";
+import Deck from "./world/Deck";
+import Analytics from "./Analytics";
+import History from "./History";
+import TeamReadout from "./TeamReadout";
 import Inspector from "./Inspector";
 import type { InspectorTab } from "./Inspector";
 import Compare from "./Compare";
@@ -21,7 +34,7 @@ import Experiment from "./Experiment";
 import Studies from "./Studies";
 import "./research.css";
 
-type View = "lab" | "compare" | "experiment" | "studies";
+type View = "history" | "lab" | "compare" | "experiment" | "studies";
 const phases = [
   { id: "wake", name: "Wake", icon: "sun" },
   { id: "planning", name: "Plan", icon: "board" },
@@ -40,9 +53,19 @@ const exports = [
 
 export default function App() {
   const [view, setView] = useState<View>(
-    location.hash === "#studies" ? "studies" : "lab",
+    !hostedDemo && location.hash === "#experiment"
+      ? "experiment"
+      : location.hash === "#history"
+        ? "history"
+        : location.hash === "#studies"
+          ? "studies"
+          : location.hash === "#compare"
+            ? "compare"
+            : "lab",
   );
-  const [showPaths, setShowPaths] = useState(false);
+  const [arm, setArm] = useState<Arm>("C");
+  const [filterArm, setFilterArm] = useState<Arm>("C");
+  const [notebookKey, setNotebookKey] = useState(0);
   const [run, setRun] = useState<Run | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [events, setEvents] = useState<LabEvent[]>([]);
@@ -69,10 +92,17 @@ export default function App() {
   const booted = useRef(false);
   const activeId = useRef("");
   const replayRequest = useRef(0);
+  const frames = useRef<ReplayBuffer | null>(null);
+  const lastDisplayed = useRef(0);
 
   useEffect(() => {
     function openRegistry() {
-      if (location.hash === "#studies") setView("studies");
+      const page = location.hash.slice(1);
+      if (
+        ["lab", "compare", "studies", "history"].includes(page) ||
+        (!hostedDemo && page === "experiment")
+      )
+        setView(page as View);
     }
     window.addEventListener("hashchange", openRegistry);
     return () => window.removeEventListener("hashchange", openRegistry);
@@ -81,27 +111,75 @@ export default function App() {
   const refreshList = useCallback(async () => {
     setRuns(await getRuns());
   }, []);
-  const selectRun = useCallback(async (id: string) => {
-    activeId.current = id;
-    replayRequest.current++;
-    if (replayTimer.current) clearTimeout(replayTimer.current);
-    setReplay(null);
-    setReplayPlaying(false);
-    setSelectedAgent(null);
-    setLoading(true);
-    setError("");
-    try {
-      const [detail, trace] = await Promise.all([getRun(id), getEvents(id)]);
-      if (activeId.current !== id) return;
-      setRun(detail);
-      setEvents(trace);
-      setReplaySeq(detail.seq ?? 0);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const selectRun = useCallback(
+    async (id: string, opening = false, play = false) => {
+      activeId.current = id;
+      const buffer = new ReplayBuffer(id);
+      frames.current = buffer;
+      replayRequest.current++;
+      if (replayTimer.current) clearTimeout(replayTimer.current);
+      setReplay(null);
+      setReplayPlaying(false);
+      setSelectedAgent(null);
+      setLoading(true);
+      setError("");
+      try {
+        const detail = await getRun(id);
+        const trace = await getEvents(id, detail.seq ?? 0);
+        if (activeId.current !== id) return;
+        const defaultArm = detail.config.arms.includes("C")
+          ? "C"
+          : detail.config.arms[0];
+        const workView =
+          new URLSearchParams(location.search).get("moment") === "work";
+        const checkpoint =
+          opening && workView
+            ? (trace.find(
+                (e) =>
+                  e.department_id === defaultArm &&
+                  e.event_type === "work_started" &&
+                  e.agent_id?.endsWith("-verifier"),
+              ) ??
+              trace.find(
+                (e) =>
+                  e.department_id === defaultArm &&
+                  e.event_type === "work_started",
+              ))
+            : opening && hostedDemo
+              ? trace.find(
+                  (e) =>
+                    e.channel === "small_talk" &&
+                    e.event_type === "message_sent",
+                )
+              : undefined;
+        const entry = play
+          ? await buffer.read(0)
+          : checkpoint
+            ? await buffer.read(checkpoint.seq)
+            : null;
+        if (activeId.current !== id) return;
+        setArm(defaultArm);
+        setFilterArm(defaultArm);
+        setNotebookKey((k) => k + 1);
+        localStorage.setItem("btt-selected-run", id);
+        setRun(detail);
+        setEvents(trace);
+        lastDisplayed.current = entry?.seq ?? detail.seq ?? 0;
+        setReplay(entry);
+        setReplayPlaying(play);
+        setReplaySeq(entry?.seq ?? detail.seq ?? 0);
+      } catch (e) {
+        if (activeId.current === id) {
+          setRun(null);
+          setEvents([]);
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        if (activeId.current === id) setLoading(false);
+      }
+    },
+    [],
+  );
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;
@@ -113,9 +191,12 @@ export default function App() {
         ]);
         setHealth(metadata);
         setRuns(records);
-        const initial = records[0] ?? (await createRun(DEFAULT_CONFIG));
-        if (!records.length) setRuns([initial]);
-        await selectRun(initial.id);
+        const initial =
+          records.find(
+            (r) => r.id === localStorage.getItem("btt-selected-run"),
+          ) ?? records[0];
+        if (initial) await selectRun(initial.id, true);
+        else setLoading(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setLoading(false);
@@ -131,6 +212,33 @@ export default function App() {
     );
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
+    let alive = true,
+      fetching = false,
+      dirty = false;
+    function scheduleRefresh() {
+      if (!alive || fetching || refreshTimer.current) return;
+      refreshTimer.current = setTimeout(async () => {
+        refreshTimer.current = null;
+        fetching = true;
+        dirty = false;
+        try {
+          const next = await getRun(id);
+          if (alive && activeId.current === id) {
+            setRun((current) =>
+              current?.id === id && (current.seq ?? 0) > (next.seq ?? 0)
+                ? current
+                : next,
+            );
+            setRuns((prior) => prior.map((r) => (r.id === id ? next : r)));
+          }
+        } catch (e) {
+          if (alive) setError(e instanceof Error ? e.message : String(e));
+        } finally {
+          fetching = false;
+          if (dirty) scheduleRefresh();
+        }
+      }, 100);
+    }
     source.onmessage = (message) => {
       let event: LabEvent;
       try {
@@ -144,58 +252,68 @@ export default function App() {
           ? previous
           : [...previous, event].sort((a, b) => a.seq - b.seq),
       );
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => {
-        getRun(id)
-          .then((next) => {
-            if (activeId.current === id) {
-              setRun(next);
-              setRuns((prior) => prior.map((r) => (r.id === id ? next : r)));
-            }
-          })
-          .catch((e) => setError(e.message));
-      }, 80);
+      dirty = true;
+      scheduleRefresh();
     };
     return () => {
+      alive = false;
       source.close();
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
       setConnected(false);
     };
     // A connection lives for one selected run; native EventSource sends Last-Event-ID on reconnect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.id]);
 
-  const onReplay = useCallback(
-    (seq: number) => {
-      if (!run) return;
-      setReplaySeq(seq);
-      setTab("Replay");
-      const request = ++replayRequest.current;
-      if (replayTimer.current) clearTimeout(replayTimer.current);
-      replayTimer.current = setTimeout(() => {
-        replayRun(run.id, seq)
-          .then((result) => {
-            if (
-              replayRequest.current === request &&
-              activeId.current === run.id
-            )
-              setReplay(result);
-          })
-          .catch((e) => setError(e.message));
-      }, 60);
-    },
-    [run?.id],
-  );
+  const onReplay = useCallback((seq: number, debounce = false) => {
+    const buffer = frames.current;
+    if (!buffer) return;
+    const request = ++replayRequest.current;
+    if (replayTimer.current) clearTimeout(replayTimer.current);
+    setReplaySeq(seq);
+    const show = (frame: Awaited<ReturnType<ReplayBuffer["read"]>>) => {
+      lastDisplayed.current = frame.seq;
+      setReplay(frame);
+    };
+    const cached = buffer.peek(seq);
+    if (cached) {
+      show(cached);
+      return;
+    }
+    const fetchFrame = () =>
+      buffer
+        .read(seq)
+        .then((frame) => {
+          if (request === replayRequest.current) show(frame);
+        })
+        .catch((e) => {
+          if (request !== replayRequest.current) return;
+          setError(e.message);
+          setReplayPlaying(false);
+          setReplaySeq(lastDisplayed.current);
+        });
+    if (debounce) replayTimer.current = setTimeout(fetchFrame, 45);
+    else void fetchFrame();
+  }, []);
 
   useEffect(() => {
-    if (!replayPlaying || !run) return;
+    if (!replayPlaying || !replay || !run) return;
+    let cancelled = false;
+    void frames.current?.warm(replay.seq, run.seq ?? 0, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [replayPlaying, replay?.seq, run?.id, run?.seq]);
+  useEffect(() => {
+    if (!replayPlaying || !run || !replay || replay.seq !== replaySeq) return;
     if (replaySeq >= (run.seq ?? 0)) {
       setReplayPlaying(false);
       return;
     }
     const timer = setTimeout(() => onReplay(replaySeq + 1), 700 / replaySpeed);
     return () => clearTimeout(timer);
-  }, [replayPlaying, replaySeq, replaySpeed, onReplay]);
+  }, [replayPlaying, replaySeq, replay, replaySpeed, onReplay]);
   useEffect(() => {
     if (notice) {
       const timer = setTimeout(() => setNotice(""), 4500);
@@ -229,7 +347,7 @@ export default function App() {
       const next = await createRun(config);
       await refreshList();
       await selectRun(next.id);
-      setView("lab");
+      navigate("lab");
       setNotice("Experiment created. Ready when you are.");
     } finally {
       setBusy(false);
@@ -242,7 +360,7 @@ export default function App() {
       const next = await api<Run>(`/runs/${run.id}/clone`, {});
       await refreshList();
       await selectRun(next.id);
-      setView("experiment");
+      navigate("experiment");
       setNotice("Configuration cloned into a fresh run.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -255,24 +373,6 @@ export default function App() {
     replay && run
       ? { ...run, state: replay.state, metrics: replay.metrics }
       : run;
-  const metrics = shownRun?.metrics?.departments;
-  const totals = Object.values(metrics ?? {}).reduce(
-    (a, m) => ({
-      completed: a.completed + (m?.completed ?? 0),
-      total: a.total + (m?.total ?? 0),
-      calls: a.calls + (m?.model_calls ?? 0),
-      tokens:
-        a.tokens +
-        (typeof m?.total_tokens === "number"
-          ? m.total_tokens
-          : (m?.input_tokens ?? 0) + (m?.output_tokens ?? 0)),
-      cost:
-        a.cost +
-        (typeof m?.estimated_cost_usd === "number" ? m.estimated_cost_usd : 0),
-      costKnown: a.costKnown && typeof m?.estimated_cost_usd === "number",
-    }),
-    { completed: 0, total: 0, calls: 0, tokens: 0, cost: 0, costKnown: true },
-  );
   const canStart =
     !!run &&
     [
@@ -293,11 +393,56 @@ export default function App() {
   const live = run?.config.provider !== "mock";
   const liveReturn = () => {
     ++replayRequest.current;
+    if (replayTimer.current) clearTimeout(replayTimer.current);
     setReplay(null);
     setReplayPlaying(false);
     setReplaySeq(run?.seq ?? 0);
   };
-  const activePhase = phases.findIndex((p) => p.id === state?.phase);
+  const visibleEvents = useMemo(
+    () => events.filter((e) => e.seq <= (replay?.seq ?? run?.seq ?? 0)),
+    [events, replay?.seq, run?.seq],
+  );
+  const notebook = (which: InspectorTab) => {
+    setTab(which);
+    setFilterArm(arm);
+    setNotebookKey((k) => k + 1);
+    requestAnimationFrame(() =>
+      document.querySelector("#notebook")?.scrollIntoView({ block: "start" }),
+    );
+  };
+  const inspectEvent = (seq: number) => {
+    onReplay(seq);
+    setTab("Replay");
+    requestAnimationFrame(() =>
+      document.querySelector("#notebook")?.scrollIntoView({ block: "start" }),
+    );
+  };
+  const historyPage = (
+    <History
+      runs={runs}
+      onOpen={async (id, play) => {
+        await selectRun(id, false, play);
+        navigate("lab");
+      }}
+      onRestart={async (original) => {
+        if (original.config.provider !== "mock") {
+          await selectRun(original.id);
+          navigate("experiment");
+          return;
+        }
+        const fresh = await api<Run>("/runs/" + original.id + "/clone", {});
+        await refreshList();
+        await selectRun(fresh.id);
+        navigate("lab");
+        setNotice("Fresh run ready. Start when you are ready to record.");
+      }}
+    />
+  );
+  function navigate(next: View) {
+    setView(next);
+    location.hash = next;
+    window.scrollTo(0, 0);
+  }
   const departments = Object.values(state?.departments ?? {}).filter(
     (d) => !!d,
   );
@@ -322,86 +467,102 @@ export default function App() {
       <aside className="rail">
         <button
           className="brand-mark"
+          title="Observation deck"
           aria-label="Beyond Task Talk home"
-          onClick={() => setView("lab")}
+          onClick={() => navigate("lab")}
         >
-          <Icon name="flask" size={24} />
-          <i />
+          <Icon name="orbit" size={29} />
         </button>
-        <div className="rail-nav">
+        <nav className="rail-nav" aria-label="Main navigation">
           {[
-            { id: "lab", icon: "grid", label: hostedDemo ? "Lab" : "Live lab" },
-            { id: "compare", icon: "chart", label: "Compare outcomes" },
-            { id: "studies", icon: "board", label: "Study registry" },
             {
-              id: "experiment",
-              icon: "settings",
-              label: "Experiment controls",
+              id: "lab",
+              label: "Lab",
+              icon: "station",
+              title: "Observe the department",
             },
-          ]
-            .filter((n) => !hostedDemo || n.id !== "experiment")
-            .map((n) => (
-              <button
-                key={n.id}
-                className={view === n.id ? "active" : ""}
-                title={n.label}
-                aria-label={n.label}
-                onClick={() => setView(n.id as View)}
-              >
-                <Icon name={n.icon} size={21} />
-              </button>
-            ))}
-        </div>
+            {
+              id: "compare",
+              label: "Compare",
+              icon: "chart",
+              title: "Compare matched runs",
+            },
+            {
+              id: "history",
+              label: "History",
+              icon: "clock",
+              title: "Replay or manage saved runs",
+            },
+            {
+              id: "studies",
+              label: "Studies",
+              icon: "board",
+              title: "Open study registry",
+            },
+            ...(!hostedDemo
+              ? [
+                  {
+                    id: "experiment",
+                    label: "Controls",
+                    icon: "settings",
+                    title: "Configure experiments",
+                  },
+                ]
+              : []),
+          ].map((n) => (
+            <button
+              key={n.id}
+              aria-current={view === n.id ? "page" : undefined}
+              className={view === n.id ? "active" : ""}
+              title={n.title}
+              onClick={() => navigate(n.id as View)}
+            >
+              <Icon name={n.icon} size={20} />
+              <small>{n.label}</small>
+            </button>
+          ))}
+        </nav>
         <button
           className="rail-about"
-          title="About this research lab"
           aria-label="About this lab"
+          title="Research information"
           onClick={() => setAbout(true)}
         >
           <Icon name="info" size={20} />
         </button>
-        <span className="rail-version">v2</span>
       </aside>
       <div className="main-shell">
         <header className="topbar">
           <div className="brand-wordmark">
             beyond task talk<span>RESEARCH LAB</span>
           </div>
-          <nav className="main-nav" aria-label="Main navigation">
-            <button
-              className={view === "lab" ? "active" : ""}
-              onClick={() => setView("lab")}
-            >
-              {hostedDemo ? "Lab" : "Live lab"}
-            </button>
-            <button
-              className={view === "compare" ? "active" : ""}
-              onClick={() => setView("compare")}
-            >
-              Compare
-            </button>
-            {!hostedDemo && (
-              <button
-                className={view === "experiment" ? "active" : ""}
-                onClick={() => setView("experiment")}
-              >
-                Experiment
-              </button>
-            )}
-            <button
-              className={view === "studies" ? "active" : ""}
-              onClick={() => setView("studies")}
-            >
-              Studies
-            </button>
-          </nav>
+          {run && (
+            <div className="run-locator">
+              {" "}
+              <div className="breadcrumb">
+                <span>Workspace</span>
+                <Icon name="chevron" size={11} />
+                <select
+                  aria-label="Select experiment run"
+                  value={run.id}
+                  onChange={(e) => selectRun(e.target.value)}
+                >
+                  {runs.map((r) => (
+                    <option value={r.id} key={r.id}>
+                      {r.config.name} · {r.id.slice(0, 6)} · {r.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="topbar-end">
             <span className="connection">
               <span
                 className={`status-dot ${connected || hostedDemo ? "" : "sleep"}`}
               />
               {hostedDemo
-                ? "Hosted replay"
+                ? "Replay archive"
                 : connected
                   ? "Engine connected"
                   : "Connecting"}
@@ -416,17 +577,7 @@ export default function App() {
           </div>
         </header>
         <main>
-          {hostedDemo && (
-            <div className="inline-note hosted-note" role="note">
-              <Icon name="info" size={16} />
-              <span>
-                <strong>Hosted demo.</strong> Replay a synthetic experiment,
-                inspect evidence and compare the teams. New runs use the private
-                research workspace.
-              </span>
-            </div>
-          )}
-          {loading && !run ? (
+          {loading ? (
             <div className="loading-screen">
               <div className="loading-creatures">
                 {[0, 1, 2, 3].map((i) => (
@@ -436,47 +587,74 @@ export default function App() {
               <span className="eyebrow">GETTING THE LAB READY</span>
               <p>Loading recorded experiment state…</p>
             </div>
+          ) : view === "history" && !error ? (
+            historyPage
           ) : !run ? (
-            <div className="connection-error">
-              <Icon name="warning" size={28} />
-              <h2>The lab is not connected yet.</h2>
-              <p>
-                {error ||
-                  "Start the local FastAPI server to connect the research console."}
-              </p>
-              <button
-                className="button primary"
-                onClick={() => window.location.reload()}
-              >
-                Reconnect
-              </button>
-            </div>
+            view === "experiment" && !hostedDemo ? (
+              <Experiment
+                run={null}
+                onCreate={newRun}
+                busy={busy}
+                health={health}
+              />
+            ) : view === "studies" && !error ? (
+              <Studies
+                openRun={async (id) => {
+                  await refreshList();
+                  await selectRun(id);
+                  navigate("lab");
+                }}
+              />
+            ) : (
+              <div className="connection-error">
+                <Icon name="warning" size={28} />
+                <h2>
+                  {error
+                    ? "Unable to load the workspace"
+                    : "No recorded experiments"}
+                </h2>
+                <p>{error || "This workspace has no run to inspect yet."}</p>
+                {error ? (
+                  <button
+                    className="button primary"
+                    onClick={() => window.location.reload()}
+                  >
+                    Reconnect
+                  </button>
+                ) : (
+                  !hostedDemo && (
+                    <button
+                      className="button primary"
+                      onClick={() => navigate("experiment")}
+                    >
+                      Configure an experiment
+                    </button>
+                  )
+                )}
+              </div>
+            )
           ) : (
             <>
               {view !== "studies" && (
                 <div className="experiment-heading">
                   <div className="heading-copy">
-                    <div className="breadcrumb">
-                      <span>Workspace</span>
-                      <Icon name="chevron" size={11} />
-                      <select
-                        aria-label="Select experiment run"
-                        value={run.id}
-                        onChange={(e) => selectRun(e.target.value)}
-                      >
-                        {runs.map((r) => (
-                          <option value={r.id} key={r.id}>
-                            {r.config.name} · {r.id.slice(0, 6)} · {r.status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <h1>
-                      What happens between the tasks<span>?</span>
-                    </h1>
+                    <TechHeading
+                      text={
+                        view === "lab"
+                          ? "Observation deck"
+                          : view === "compare"
+                            ? "Run comparison"
+                            : "Experiment controls"
+                      }
+                    />
                     <p>
-                      {run.config.arms.length === 3 ? "Three" : "Two"} teams.
-                      The same project. A different kind of break.
+                      {run.config.environment === "supplier_selection_v1"
+                        ? "Select the best supplier using four private scorecards."
+                        : "Deliver a task board against machine-checked milestones."}{" "}
+                      <span>
+                        {" "}
+                        {run.config.arms.length} matched departments.
+                      </span>
                     </p>
                   </div>
                   <div className="heading-actions">
@@ -536,7 +714,9 @@ export default function App() {
                       <span
                         className={`status-dot ${running ? "pulsing" : terminal ? "sleep" : ""}`}
                       />
-                      <strong>{replay ? "Replay" : nice(run.status)}</strong>
+                      <strong>
+                        {replay ? "Recorded replay" : nice(run.status)}
+                      </strong>
                       <span className="toolbar-divider" />
                       <Icon name="sun" size={16} />
                       <span>
@@ -685,232 +865,49 @@ export default function App() {
                       </div>
                     </div>
                   )}
-                  <div className="summary-strip">
-                    <div>
-                      <span className="summary-icon">
-                        <Icon name="board" size={19} />
-                      </span>
-                      <span>
-                        <small>
-                          {run.config.environment === "supplier_selection_v1"
-                            ? "Scored tenders awarded"
-                            : "Milestones passed"}
-                        </small>
-                        <strong>
-                          {totals.completed}
-                          <em> / {totals.total}</em>
-                        </strong>
-                      </span>
-                      <span className="summary-caption">
-                        Across {departments.length} departments
-                      </span>
+                  {state && shownRun && (
+                    <Deck
+                      key={"room-" + run.id}
+                      state={state}
+                      run={shownRun}
+                      events={visibleEvents}
+                      arm={arm}
+                      onArm={(id) => {
+                        setArm(id);
+                        setFilterArm(id);
+                        setNotebookKey((k) => k + 1);
+                      }}
+                      selected={selectedAgent}
+                      onPick={setSelectedAgent}
+                      open={notebook}
+                      onReplay={inspectEvent}
+                    />
+                  )}
+                  {shownRun && (
+                    <TeamReadout
+                      run={shownRun}
+                      seq={replay?.seq ?? run.seq ?? 0}
+                    />
+                  )}
+                  {budget && budget.uncertain_attempts > 0 && (
+                    <div className="inline-note">
+                      Budget reservations include {budget.uncertain_attempts}{" "}
+                      uncertain attempts · {num(budget.tokens)} tokens ·{" "}
+                      {money(budget.estimated_cost_usd)} estimated.
                     </div>
-                    <div>
-                      <span className="summary-icon">
-                        <Icon name="activity" size={19} />
-                      </span>
-                      <span>
-                        <small>Model calls</small>
-                        <strong>
-                          {num(totals.calls)}
-                          <em> / {num(run.config.max_calls)}</em>
-                        </strong>
-                      </span>
-                    </div>
-                    <div>
-                      <span className="summary-icon">
-                        <Icon name="chart" size={19} />
-                      </span>
-                      <span>
-                        <small>Budget tokens</small>
-                        <strong>{num(budget?.tokens ?? totals.tokens)}</strong>
-                      </span>
-                    </div>
-                    <div>
-                      <span className="summary-icon">
-                        <Icon name="key" size={19} />
-                      </span>
-                      <span>
-                        <small>Estimated cost</small>
-                        <strong>
-                          {budget
-                            ? money(budget.estimated_cost_usd)
-                            : totals.costKnown
-                              ? money(totals.cost)
-                              : "Unavailable"}
-                        </strong>
-                      </span>
-                      <span className="summary-caption">
-                        Cap {money(run.config.max_cost_usd)}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                   {replay && (
                     <div className="replay-banner">
-                      <Icon name="replay" size={17} />
+                      <Icon name="replay" size={15} />
                       <span>
-                        Viewing recorded state at event #{replay.seq}.
+                        Recorded state · Event #{replay.seq} of {run.seq}
                       </span>
                       <button onClick={liveReturn}>
                         {hostedDemo ? "Return to results" : "Return to live"}{" "}
-                        <Icon name="arrow" size={14} />
+                        <Icon name="arrow" size={13} />
                       </button>
                     </div>
                   )}
-                  <div className="lab-layout">
-                    <div className="world-column">
-                      <div className="world-heading">
-                        <div
-                          className="scene-switch"
-                          aria-label="Observation view"
-                        >
-                          <button
-                            aria-pressed={!showPaths}
-                            onClick={() => setShowPaths(false)}
-                          >
-                            Office
-                          </button>
-                          <button
-                            aria-pressed={showPaths}
-                            onClick={() => setShowPaths(true)}
-                          >
-                            Message paths
-                          </button>
-                        </div>
-                        <span>
-                          <i />
-                          Matched initial state{" "}
-                          <code>{run.initial_state_hash?.slice(0, 8)}</code>
-                        </span>
-                      </div>
-                      <div
-                        className={`offices ${departments.length === 3 ? "three-arms" : ""}`}
-                      >
-                        {departments.map((d) => (
-                          <Office
-                            key={d.id}
-                            department={d}
-                            metrics={metrics?.[d.id]}
-                            events={
-                              replay
-                                ? events.filter((e) => e.seq <= replay.seq)
-                                : events
-                            }
-                            phase={state?.phase}
-                            paths={showPaths}
-                            procurement={
-                              run.config.environment === "supplier_selection_v1"
-                            }
-                            onReplay={onReplay}
-                            onAgent={(a) => {
-                              setSelectedAgent(a);
-                              setTab("Memory");
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div className="condition-explainer">
-                        <span className="explainer-icon">
-                          <Icon name="flask" size={20} />
-                        </span>
-                        <div>
-                          <strong>
-                            The break changes. The work allowance doesn’t.
-                          </strong>
-                          <p>
-                            Both teams share role templates, task requirements
-                            and work turns. C adds non-task chat; A rests
-                            silently.
-                            {run.config.arms.includes("B")
-                              ? " B journals privately to control extra calls."
-                              : ""}
-                          </p>
-                        </div>
-                        {!hostedDemo && (
-                          <button
-                            aria-label="Open experiment design controls"
-                            onClick={() => setView("experiment")}
-                          >
-                            <Icon name="arrow" size={19} />
-                          </button>
-                        )}
-                      </div>
-                      <div className="day-panel panel">
-                        <div className="day-panel-heading">
-                          <div>
-                            <span className="eyebrow">A DAY IN THE LAB</span>
-                            <h3>Small routines. Persistent progress.</h3>
-                          </div>
-                          {!hostedDemo && (
-                            <button
-                              className="text-button"
-                              disabled={
-                                busy ||
-                                run.config.scheduler_mode !== "virtual" ||
-                                running ||
-                                terminal
-                              }
-                              title={
-                                run.config.scheduler_mode !== "virtual"
-                                  ? "Available only in virtual-time mode"
-                                  : running
-                                    ? "Pause before advancing one day"
-                                    : terminal
-                                      ? "This run has ended"
-                                      : "Run until the next day boundary"
-                              }
-                              onClick={() => command("advance_day")}
-                            >
-                              Advance one day <Icon name="arrow" size={14} />
-                            </button>
-                          )}
-                        </div>
-                        <div className="day-phases">
-                          {phases.map((p, i) => (
-                            <div
-                              key={p.id}
-                              className={`${i === activePhase ? "current" : ""} ${i < activePhase ? "past" : ""}`}
-                            >
-                              <span>
-                                <Icon name={p.icon} size={17} />
-                              </span>
-                              <strong>{p.name}</strong>
-                              {i < phases.length - 1 && <i />}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="schedule-footnote">
-                          <Icon name="memory" size={14} />
-                          <span>
-                            Board state & agent memories carry forward to the
-                            next day.
-                          </span>
-                          <span>
-                            Engine controls the schedule · scene displays it
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    {state && shownRun && (
-                      <Inspector
-                        run={shownRun}
-                        events={
-                          replay
-                            ? events.filter((e) => e.seq <= replay.seq)
-                            : events
-                        }
-                        tab={tab}
-                        setTab={setTab}
-                        state={state}
-                        selectedAgent={selectedAgent}
-                        onAgent={setSelectedAgent}
-                        replaySeq={replay ? replaySeq : (run.seq ?? 0)}
-                        onReplay={onReplay}
-                        onLive={liveReturn}
-                        replaying={!!replay}
-                      />
-                    )}
-                  </div>
                   <section className="timeline panel">
                     <div className="timeline-heading">
                       <div>
@@ -919,6 +916,47 @@ export default function App() {
                         <span>Recorded checkpoints</span>
                       </div>
                       <div>
+                        <select
+                          aria-label="Jump to phase"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value)
+                              onReplay(Number(e.target.value), true);
+                          }}
+                        >
+                          <option value="">Jump to phase</option>
+                          {events
+                            .filter((e) => e.event_type === "phase_started")
+                            .map((e) => (
+                              <option key={e.seq} value={e.seq}>
+                                Day {e.virtual_day} ·{" "}
+                                {phases.find(
+                                  (p) => p.id === e.payload_json.phase,
+                                )?.name ?? nice(e.payload_json.phase)}
+                              </option>
+                            ))}
+                        </select>
+                        {!hostedDemo && (
+                          <button
+                            className="text-button"
+                            disabled={
+                              busy ||
+                              run.config.scheduler_mode !== "virtual" ||
+                              running ||
+                              terminal
+                            }
+                            title={
+                              terminal
+                                ? "Run finished"
+                                : running
+                                  ? "Pause first"
+                                  : "Advance a virtual day"
+                            }
+                            onClick={() => command("advance_day")}
+                          >
+                            Advance one day
+                          </button>
+                        )}
                         <select
                           aria-label="Replay playback speed"
                           value={replaySpeed}
@@ -936,7 +974,7 @@ export default function App() {
                           className="text-button"
                           disabled={!events.length}
                           onClick={() => {
-                            if (!replay) {
+                            if (!replay || replaySeq >= (run.seq ?? 0)) {
                               onReplay(0);
                             }
                             setReplayPlaying(!replayPlaying);
@@ -1029,11 +1067,47 @@ export default function App() {
                         max={run.seq ?? 0}
                         value={replay ? replaySeq : (run.seq ?? 0)}
                         disabled={!run.seq}
-                        onChange={(e) => onReplay(Number(e.target.value))}
+                        onChange={(e) => onReplay(Number(e.target.value), true)}
                         aria-label="Timeline replay scrubber"
                       />
                       <span>#{run.seq ?? 0}</span>
                     </div>
+                  </section>
+                  {shownRun && state && departments.length > 0 && (
+                    <Analytics
+                      key={run.id}
+                      run={shownRun}
+                      events={visibleEvents}
+                      department={state.departments[arm] ?? departments[0]}
+                      onArm={(id) => {
+                        setArm(id);
+                        setSelectedAgent(null);
+                      }}
+                      onReplay={inspectEvent}
+                      onAgent={(a) => {
+                        setSelectedAgent(a);
+                        notebook("Memory");
+                      }}
+                    />
+                  )}
+                  <section id="notebook">
+                    {state && shownRun && (
+                      <Inspector
+                        key={run.id + ":" + notebookKey}
+                        initialArm={filterArm}
+                        run={shownRun}
+                        events={visibleEvents}
+                        tab={tab}
+                        setTab={setTab}
+                        state={state}
+                        selectedAgent={selectedAgent}
+                        onAgent={setSelectedAgent}
+                        replaySeq={replay ? replay.seq : (run.seq ?? 0)}
+                        onReplay={onReplay}
+                        onLive={liveReturn}
+                        replaying={!!replay}
+                      />
+                    )}
                   </section>
                 </>
               )}
@@ -1045,7 +1119,7 @@ export default function App() {
                   openRun={async (id) => {
                     await refreshList();
                     await selectRun(id);
-                    setView("lab");
+                    navigate("lab");
                   }}
                 />
               )}
@@ -1109,7 +1183,8 @@ export default function App() {
               The purchasing work sample scores decisions against four private
               criteria. The task board checks submitted milestones. Live mode
               records model responses. Mock mode runs a deterministic policy.
-              The office animates recorded events.
+              The office animates recorded events. Passive conversation (D) is a
+              proposed condition for future studies.
             </p>
             <div className="about-facts">
               <span>
@@ -1127,7 +1202,7 @@ export default function App() {
               className="button primary"
               onClick={() => {
                 setAbout(false);
-                setView("compare");
+                navigate("compare");
               }}
             >
               Explore the comparison <Icon name="arrow" size={16} />

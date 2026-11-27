@@ -1,8 +1,9 @@
+import ChatTranscript from "./ChatTranscript";
 import { useState } from "react";
 import { hostedDemo } from "./api";
 import type { Agent, Arm, LabEvent, Run, State } from "./types";
 import { ARMS, COLORS, ROLES, money, nice, num } from "./types";
-import { Creature } from "./Office";
+import Creature from "./Creature";
 import Icon from "./Icon";
 import TenderEvidence from "./TenderEvidence";
 
@@ -18,7 +19,8 @@ export type InspectorTab = (typeof TABS)[number];
 
 const eventText = (e: LabEvent) => {
   const action = e.payload_json.action as
-    { type?: string; task_id?: string } | undefined;
+    | { type?: string; task_id?: string }
+    | undefined;
   return String(
     e.payload_json.text ??
       e.payload_json.message ??
@@ -210,7 +212,9 @@ export default function Inspector({
   onReplay,
   onLive,
   replaying,
+  initialArm,
 }: {
+  initialArm: Arm;
   run: Run;
   events: LabEvent[];
   tab: InspectorTab;
@@ -223,7 +227,8 @@ export default function Inspector({
   onLive: () => void;
   replaying: boolean;
 }) {
-  const [department, setDepartment] = useState("all");
+  const [department, setDepartment] = useState<string>(initialArm);
+  const [limit, setLimit] = useState(100);
   const [day, setDay] = useState("all");
   const [agent, setAgent] = useState("all");
   const [channel, setChannel] = useState("all");
@@ -232,8 +237,8 @@ export default function Inspector({
   const [severity, setSeverity] = useState("all");
   const [query, setQuery] = useState("");
   const [moreFilters, setMoreFilters] = useState(false);
-  const [goalArm, setGoalArm] = useState<Arm>("A");
-  const [memoryArm, setMemoryArm] = useState<Arm>("A");
+  const [goalArm, setGoalArm] = useState<Arm>(initialArm);
+  const [memoryArm, setMemoryArm] = useState<Arm>(initialArm);
   const [conversationChannel, setConversationChannel] = useState("all");
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const departments = Object.values(state.departments);
@@ -249,16 +254,24 @@ export default function Inspector({
       (severity === "all" || e.severity === severity) &&
       (!query || JSON.stringify(e).toLowerCase().includes(query.toLowerCase())),
   );
+  const activity =
+    type === "all" && !query
+      ? filtered.filter(
+          (e) =>
+            ![
+              "cursor_advanced",
+              "provider_attempt_started",
+              "agent_moving",
+            ].includes(e.event_type),
+        )
+      : filtered;
   const messages = filtered
     .filter(
       (e) =>
         typeof e.payload_json.text === "string" &&
         (e.event_type === "message_sent" ||
           e.event_type === "journal_written" ||
-          e.event_type === "chat_smalltalk" ||
-          e.channel === "work" ||
-          e.channel === "small_talk" ||
-          e.channel === "notes"),
+          e.event_type === "chat_smalltalk"),
     )
     .filter(
       (e) => conversationChannel === "all" || e.channel === conversationChannel,
@@ -270,7 +283,7 @@ export default function Inspector({
   return (
     <aside className="inspector panel">
       <div className="inspector-title">
-        <span className="eyebrow">RESEARCH NOTEBOOK</span>
+        <span className="eyebrow">Research notebook</span>
         <span className="live-count">
           <span className={`status-dot ${replaying ? "sleep" : ""}`} />
           {replaying ? "Replay" : `${events.length} events`}
@@ -299,7 +312,7 @@ export default function Inspector({
             <Icon name="search" size={15} />
             <input
               aria-label="Search recorded events"
-              placeholder="Search the trace…"
+              placeholder="Search messages and events…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -426,13 +439,13 @@ export default function Inspector({
         {tab === "Activity" && (
           <>
             <div className="section-label">
-              {filtered.length} RECORDED EVENTS <span>Latest first</span>
+              {activity.length} MATCHING EVENTS <span>Latest first</span>
             </div>
             <div className="event-list">
-              {filtered
+              {activity
                 .slice()
                 .reverse()
-                .slice(0, 120)
+                .slice(0, limit)
                 .map((e) => (
                   <button
                     className="event-row"
@@ -474,7 +487,15 @@ export default function Inspector({
                   </button>
                 ))}
             </div>
-            {!filtered.length && (
+            {activity.length > limit && (
+              <button
+                className="text-button"
+                onClick={() => setLimit(limit + 100)}
+              >
+                Load more events
+              </button>
+            )}
+            {!activity.length && (
               <Empty
                 icon="activity"
                 title="A quiet moment before discovery"
@@ -505,47 +526,19 @@ export default function Inspector({
                 </button>
               ))}
             </div>
-            <div className="conversation-list">
-              {messages.map((e) => {
-                const a = allAgents.find((a) => a.id === e.agent_id);
-                return (
-                  <article
-                    key={e.event_id}
-                    className={`conversation ${e.channel === "small_talk" ? "casual" : ""}`}
-                  >
-                    <Creature
-                      role={
-                        Math.max(
-                          0,
-                          allAgents.findIndex((a) => a.id === e.agent_id),
-                        ) % 4
-                      }
-                      size={32}
-                    />
-                    <div>
-                      <div className="event-meta">
-                        <strong>{a?.name ?? e.agent_id ?? "Agent"}</strong>
-                        <span>
-                          Dept. {e.department_id} · Day {e.virtual_day}
-                        </span>
-                      </div>
-                      <div className="message-bubble">
-                        {String(e.payload_json.text)}
-                      </div>
-                      <small>
-                        {nice(e.channel)}
-                        {e.channel === "notes"
-                          ? " · Private to this agent"
-                          : ""}
-                        {e.payload_json.recipient_id
-                          ? ` → ${String(e.payload_json.recipient_id)}`
-                          : ""}
-                      </small>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+            {messages.length > 0 && (
+              <ChatTranscript
+                messages={messages}
+                agents={allAgents}
+                department={department}
+                channel={conversationChannel}
+                synthetic={run.config.provider === "mock"}
+                onReplay={(seq) => {
+                  setTab("Replay");
+                  onReplay(seq);
+                }}
+              />
+            )}
             {!messages.length && (
               <Empty
                 icon="chat"

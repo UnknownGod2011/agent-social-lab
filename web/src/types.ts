@@ -1,4 +1,4 @@
-export type Arm = "A" | "B" | "C";
+export type Arm = "A" | "B" | "C" | "D";
 export type Config = {
   name: string;
   days: number;
@@ -156,24 +156,29 @@ export const ARMS: Record<
   Arm,
   { title: string; subtitle: string; color: string }
 > = {
+  D: {
+    title: "Passive conversation",
+    subtitle: "Read a matched conversation",
+    color: "#66cbb9",
+  },
   A: {
     title: "Work only",
     subtitle: "Silent breaks · shared project",
-    color: "#a9bcad",
+    color: "#81cede",
   },
   B: {
     title: "Solo reflection",
     subtitle: "Private journal · shared project",
-    color: "#b4a4cf",
+    color: "#b9a2ed",
   },
   C: {
     title: "Work + small talk",
     subtitle: "Table conversation · shared project",
-    color: "#e9b887",
+    color: "#f2a076",
   },
 };
 export const ROLES = ["coordinator", "builder", "verifier", "integrator"];
-export const COLORS = ["#e7b879", "#a7beb0", "#b3a5cf", "#de9c8a"];
+export const COLORS = ["#ffc17c", "#8fd6c8", "#c1a5ec", "#f3a4a1"];
 export const nice = (text: unknown) =>
   String(text ?? "")
     .replaceAll("_", " ")

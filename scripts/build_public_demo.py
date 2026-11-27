@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts.pack_public_replay import pack
 from engine.metrics import compute_metrics
 from engine.reducer import reduce_event
 from engine.world import digest
@@ -112,6 +113,7 @@ def build(output):
             with tempfile.TemporaryDirectory(dir=output, prefix=".building-") as stage:
                 staged = Path(stage)
                 count = export_demo(client, staged, study_id, run)
+                pack(staged)
                 files = sorted((p for p in staged.rglob("*") if p.is_file()),
                                key=lambda p: (p.parent == staged, p.name == "runs.json"))
                 size = sum(p.stat().st_size for p in files)

@@ -8,7 +8,7 @@ A local laboratory for testing whether a non-task conversation changes the subse
 
 Open the [Vercel demo](https://beyond-task-talk-lab-preview.vercel.app) to watch a synthetic run, scrub the actual event ledger, inspect supplier scorecards, compare decisions, and download study data. Live runs and study registration use the private app described below. The [next study plan](docs/NEXT_STUDY.md) specifies the proposed transcript control, measurements, and evidence milestones.
 
-With the local dependencies installed and Vercel CLI signed in, run `.\scripts\deploy_preview.ps1` to build and repoint that URL. Add `-BuildOnly` to stage locally without publishing. The script creates a temporary database with credentials cleared and exports a fresh mock run into Vercel's static output. It uploads the generated pages and fixture only. The initial deployment was classified as production by the CLI when it created the project. Subsequent calls explicitly target Preview.
+With the local dependencies installed and Vercel CLI signed in, run `.\scripts\deploy_preview.ps1` to build and repoint that URL. Add `-BuildOnly` to stage locally without publishing. The script reuses the existing public recording. A clean build without a staged archive opens an empty workspace. A visual deployment creates no experiments or provider calls. The initial deployment was classified as production by the CLI when it created the project. Subsequent calls explicitly target Preview.
 
 ## Run locally
 
@@ -32,9 +32,13 @@ The creatures blink and breathe between actions. Location changes, work activity
 
 For manual setup on another platform, create a Python 3.11+ virtual environment, install `requirements.txt`, run `npm --prefix web install` and `npm --prefix web run build`, then start `python -m uvicorn api.main:app --host 127.0.0.1 --port 8000` from the repository root. Python needs IANA timezone data, supplied by the `tzdata` dependency.
 
+## Observation deck
+
+Use the sidebar to open Lab, Compare, History or Studies. Lab shares a replay cursor between the full-frame floor plan, orbitable 3D room, crew inspector, time series, transcripts and event notebook. Drag a character to give it a short walk. It returns to its recorded station. History can clear and restore the visible list per browser. Private researchers can create a fresh run from an earlier configuration. [Renderer architecture and verification](docs/OBSERVATION_DECK.md).
+
 ## Run a registered study
 
-Open **[Studies](http://127.0.0.1:8000/#studies)**. Register a provider, a model, distinct case seeds, days, work rounds, memory policy and budgets. Registration atomically allocates all A/B/C blocks. Open a block to start it. Goals lets you inspect the scorecards from each role's perspective, and Message paths links a handoff to its recorded event. Compare shows points, coverage, tokens, timing and costs. The mock provider gives a deterministic reference policy. Live cohorts record the actual model's actions and may include low or zero scores.
+Open **[Studies](http://127.0.0.1:8000/#studies)**. Register a provider, a model, distinct case seeds, days, work rounds, memory policy and budgets. Registration atomically allocates all A/B/C blocks. Open a block to start it. Goals lets you inspect the scorecards from each role's perspective, and the communication network links a message or cooperation use to its recorded event. Compare shows points, coverage, tokens, timing and costs. The mock provider gives a deterministic reference policy. Live cohorts record the actual model's actions and may include low or zero scores.
 
 Open a study's JSON to obtain its full ID. For batch execution or archival:
 

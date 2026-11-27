@@ -1,3 +1,4 @@
+import { OutcomesPlot, SpreadPlot } from "./ComparePlots";
 import { useEffect, useState } from "react";
 import { api, downloadPath } from "./api";
 import type { Arm, Run } from "./types";
@@ -32,6 +33,8 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
     if (!selected.length) {
       setSummary([]);
       setComparison([]);
+      setLoading(false);
+      setError("");
       return;
     }
     let cancelled = false;
@@ -47,7 +50,11 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message);
+        if (!cancelled) {
+          setError(e.message);
+          setSummary([]);
+          setComparison([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -58,21 +65,6 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
   }, [selected, run]);
   const arms = run.config.arms;
   const purchasing = run.config.environment === "supplier_selection_v1";
-  const completion = (arm: Arm) => {
-    const m = run.metrics?.departments[arm];
-    return m
-      ? (purchasing
-          ? Number(m.decision_yield ?? 0)
-          : m.completed / (m.total || 1)) * 100
-      : 0;
-  };
-  const tokens = (arm: Arm) => {
-    const m = run.metrics?.departments[arm];
-    return typeof m?.total_tokens === "number"
-      ? m.total_tokens
-      : (m?.input_tokens ?? 0) + (m?.output_tokens ?? 0);
-  };
-  const maxTokens = Math.max(1, ...arms.map(tokens));
   const metricKeys = [
     ...new Set([
       "completed",
@@ -102,119 +94,14 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
       : `${format(mean)}${sd === null ? " · variability unavailable" : ` ± ${format(sd)} SD`}`;
   return (
     <div className="compare-page">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">SIDE BY SIDE, WITH CONTEXT</span>
-          <h2>Did the break make a difference?</h2>
-          <p>
-            Compare objective outcomes, resource use and observable cooperation.
-          </p>
-        </div>
-        <span className="badge muted">
-          {run.config.provider === "mock"
-            ? "SYNTHETIC DEMONSTRATION"
-            : "LIVE MODEL DATA"}
-        </span>
-      </div>
       <div className="comparison-notice">
-        <Icon name="flask" size={21} />
-        <div>
-          <strong>A dashboard is not a scientific conclusion.</strong>
-          <p>
-            Sample counts refer to team runs, not individual agents. A handful
-            of runs cannot establish an effect. Synthetic mock data proves only
-            that the system works.
-          </p>
-        </div>
+        <Icon name="flask" size={19} />
+        <p>
+          Each department contributes one team-run per experiment. Small samples
+          and synthetic runs cannot establish a treatment effect.
+        </p>
       </div>
-      <div className="compare-charts">
-        <section className="panel chart-card">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">PRIMARY OUTCOME</span>
-              <h3>
-                {purchasing
-                  ? "Post-break decision yield"
-                  : "Project completion"}
-              </h3>
-            </div>
-            <Icon name="board" size={18} />
-          </div>
-          <div className="bar-chart">
-            {arms.map((a) => (
-              <div className="bar-row" key={a}>
-                <span className="arm-tag" style={{ color: ARMS[a].color }}>
-                  {a}
-                </span>
-                <div>
-                  <div className="bar-label">
-                    <span>{ARMS[a].title}</span>
-                    <strong>
-                      {purchasing
-                        ? completion(a).toFixed(1) + "%"
-                        : String(run.metrics?.departments[a]?.completed ?? 0) +
-                          " / " +
-                          String(run.metrics?.departments[a]?.total ?? 12)}
-                    </strong>
-                  </div>
-                  <div className="chart-track">
-                    <i
-                      style={{
-                        width: `${completion(a)}%`,
-                        background: ARMS[a].color,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="chart-footnote">
-            {purchasing
-              ? "Earned / attainable points across six tenders"
-              : "Machine-checked milestones"}{" "}
-            · current run · n = 1 per condition
-          </p>
-        </section>
-        <section className="panel chart-card">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">RESOURCE USE</span>
-              <h3>The cost of conversation</h3>
-            </div>
-            <Icon name="chart" size={18} />
-          </div>
-          <div className="bar-chart">
-            {arms.map((a) => (
-              <div className="bar-row" key={a}>
-                <span className="arm-tag" style={{ color: ARMS[a].color }}>
-                  {a}
-                </span>
-                <div>
-                  <div className="bar-label">
-                    <span>{num(tokens(a))} tokens</span>
-                    <strong>
-                      {money(run.metrics?.departments[a]?.estimated_cost_usd)}
-                    </strong>
-                  </div>
-                  <div className="chart-track">
-                    <i
-                      style={{
-                        width: `${(tokens(a) / maxTokens) * 100}%`,
-                        background: ARMS[a].color,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="chart-footnote">
-            Estimated USD from token rates. Provider-reported cost shown
-            separately below.
-          </p>
-        </section>
-      </div>
+      <OutcomesPlot runs={comparison} />
       <div className="comparison-bottom">
         <section className="panel compare-table">
           <div className="section-heading">
@@ -448,6 +335,22 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
               {group.provider.toUpperCase()} · CONFIG{" "}
               {group.configuration_group.slice(0, 10)}
             </span>
+            <SpreadPlot
+              parameter={parameter}
+              rows={(Object.keys(group.departments) as Arm[]).map((arm) => {
+                const d = group.departments[arm]!;
+                const item =
+                  d.metrics?.[parameter] ??
+                  (parameter === "completed"
+                    ? { n: d.n, mean: d.mean_milestones, sd: d.sd_milestones }
+                    : { n: 0, mean: null, sd: null });
+                return { arm, ...item };
+              })}
+            />
+            <small>
+              Dots show means. Whiskers show one sample standard deviation where
+              repeated measurements exist.
+            </small>
             <div className="replication-stats">
               {(Object.keys(group.departments) as Arm[]).map((a) => {
                 const department = group.departments[a]!;

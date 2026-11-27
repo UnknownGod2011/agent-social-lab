@@ -13,3 +13,4 @@ web/dist/
 web/*.tsbuildinfo
 output/playwright/ui-events.jsonl
 .verification/
+output/playwright/deck-analysis-private.png

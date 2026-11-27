@@ -6,6 +6,26 @@ export default function Icon({
   size?: number;
 }) {
   const paths: Record<string, React.ReactNode> = {
+    orbit: (
+      <>
+        <ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-34 12 12)" />
+        <path d="M6 13.7a6 6 0 1 1 11.5.6M8.5 16.9a6 6 0 0 0 8-.8" />
+        <circle cx="8" cy="9" r="1" fill="currentColor" />
+      </>
+    ),
+    station: (
+      <>
+        <path d="M2 10 12 4l10 6-10 6zM4 13v4l8 4 8-4v-4" />
+        <path d="m12 16 0 5" />
+      </>
+    ),
+    focus: (
+      <>
+        <circle cx="12" cy="12" r="6" />
+        <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+      </>
+    ),
+    expand: <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />,
     play: <path d="m8 5 11 7-11 7z" />,
     pause: (
       <>

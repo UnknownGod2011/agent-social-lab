@@ -34,9 +34,6 @@ async def lifespan(app):
     app.state.pool = GeminiPool()
     app.state.scheduler = Scheduler(app.state.store, app.state.pool)
     await app.state.scheduler.recover()
-    if not app.state.store.list():
-        app.state.store.create(RunConfig(name="Purchasing lab · offline", environment="supplier_selection_v1",
-                                         arms=["A","B","C"], model="mock-v1"))
     yield
     await app.state.scheduler.shutdown()
     await app.state.pool.close()
@@ -184,9 +181,9 @@ def metrics(run_id: str):
 
 @app.get("/api/runs/{run_id}/replay")
 def replay(run_id: str, seq: int | None = None):
-    get_run(run_id)
+    config = get_run(run_id)["config"]
     result = store().replay(run_id, seq)
-    result["metrics"] = compute_metrics([e for e in store().events(run_id) if e["seq"] <= result["seq"]], get_run(run_id)["config"])
+    result["metrics"] = compute_metrics(store().events(run_id, limit=result["seq"]), config)
     return result
 
 

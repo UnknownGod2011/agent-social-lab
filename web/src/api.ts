@@ -48,8 +48,31 @@ export const getRun = (id: string) => api<Run>(`/runs/${id}`);
 export const createRun = (config: Config) => api<Run>("/runs", config);
 export const controlRun = (id: string, command: string) =>
   api<Run>(`/runs/${id}/control`, { command });
-export const getEvents = (id: string) =>
-  api<LabEvent[]>(`/runs/${id}/events?limit=100000`);
+export async function getEvents(
+  id: string,
+  through: number,
+): Promise<LabEvent[]> {
+  if (hostedDemo) return api<LabEvent[]>("/runs/" + id + "/events");
+  const result: LabEvent[] = [];
+  let after = 0;
+  while (after < through) {
+    const page = await api<LabEvent[]>(
+      "/runs/" +
+        id +
+        "/events?after=" +
+        after +
+        "&limit=" +
+        Math.min(2000, through - after),
+    );
+    if (!page.length || page[0].seq !== after + 1)
+      throw new Error(
+        "The event history is incomplete at event " + (after + 1) + ".",
+      );
+    result.push(...page);
+    after = page[page.length - 1].seq;
+  }
+  return result;
+}
 export const replayRun = (id: string, seq: number) =>
   api<{ state: State; seq: number; metrics: Metrics }>(
     `/runs/${id}/replay?seq=${seq}`,

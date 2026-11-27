@@ -1,7 +1,7 @@
 async (page) => {
-  await page.goto("http://127.0.0.1:8000");
+  await page.goto("http://127.0.0.1:5173");
   const previousId = await page.getByRole("combobox", {name: "Select experiment run"}).inputValue();
-  await page.getByRole("button", {name: "Experiment", exact: true}).click();
+  await page.getByRole("button", {name: "Controls", exact: true}).click();
   await page.getByLabel("Experiment name", {exact: true}).fill("Journaling control validation");
   await page.getByLabel("Virtual days", {exact: false}).selectOption("2");
   await page.getByRole("combobox", {name: "Provider", exact: true}).selectOption("mock");
@@ -13,23 +13,23 @@ async (page) => {
     const select = document.querySelector('select[aria-label="Select experiment run"]');
     return select && select.value && select.value !== prior;
   }, previousId);
-  await page.getByText("Three teams. The same project. A different kind of break.", {exact: true}).waitFor();
   const runId = await page.getByRole("combobox", {name: "Select experiment run"}).inputValue();
-  if (await page.locator(".office-card").count() !== 3) throw new Error("Optional B office missing");
+  if (await page.getByLabel("Featured department").locator("option").count() !== 3) throw new Error("Optional B office missing");
   await page.getByRole("button", {name: "Advance one day", exact: true}).click();
   let r;
   for (let attempt=0;attempt<150;attempt++) {
-    r = await (await page.request.get("http://127.0.0.1:8000/api/runs/" + runId)).json();
+    r = await (await page.request.get("http://127.0.0.1:5173/api/runs/" + runId)).json();
     if (r.status === "paused" && r.state.last_completed_day === 1 && r.metrics.departments.B.journal_entries === 4 && r.metrics.departments.C.small_talk_messages === 4) break;
     await page.waitForTimeout(100);
   }
   if (r.metrics.departments.B.journal_entries !== 4 || r.metrics.departments.C.small_talk_messages !== 4) throw new Error("Condition traces differ from scheduled calls: " + JSON.stringify(r.metrics));
   await page.getByRole("tab", {name: "Conversations", exact: true}).click();
+  await page.getByLabel("Filter department").selectOption("B");
   await page.getByRole("button", {name: "Journal", exact: true}).click();
   await page.getByText("Notes · Private to this agent", {exact: true}).first().waitFor();
   await page.getByRole("button", {name: "Clone run", exact: true}).click();
   await page.getByRole("heading", {name: "A fair test starts here."}).waitFor();
-  await page.getByRole("button", {name: "Live lab", exact: true}).last().click();
+  await page.getByRole("button", {name: "Lab", exact: true}).last().click();
   await page.getByRole("button", {name: "Start experiment", exact: true}).click();
   await page.getByRole("button", {name: "Stop experiment", exact: true}).click();
   await page.getByRole("button", {name: "Run finished", exact: true}).waitFor();

@@ -76,7 +76,7 @@ flowchart TD
 | `api/main.py` | Application lifespan, local-origin checks, REST controls/queries, reconnectable SSE, real-data exports, run comparisons, and frontend static serving. |
 | `web/src/api.ts`, `types.ts` | Typed browser HTTP helpers and presentation types. They do not implement task-world acceptance rules. |
 | `web/src/App.tsx` | Selected-run lifecycle, SSE subscription, controls, navigation, replay requests, and export navigation. |
-| `web/src/Office.tsx`, `Icon.tsx` | Original SVG creatures, office rendering, and icons. Activity and movement come from backend state. |
+| `web/src/world/Deck.tsx`, `Icon.tsx` | Shared 2D and 3D observation deck. See [Observation deck](OBSERVATION_DECK.md) for the geometry, interaction, history and analytics modules. |
 | `web/src/Inspector.tsx` | Recorded activity, conversations, goals, objective metrics, memories, cooperation graph, and replay inspection. |
 | `web/src/Experiment.tsx`, `Compare.tsx` | New immutable experiment configuration and recorded run comparisons. |
 | `scripts/check_provider.py` | Sanitized Gemini preflight and optional one-request live diagnostic. Never prints credentials. |
