@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, downloadPath, hostedDemo } from "./api";
 import type { Config } from "./types";
 import { ARMS, DEFAULT_CONFIG, money, nice } from "./types";
 import Icon from "./Icon";
@@ -128,6 +128,7 @@ export default function Studies({
   const [calls, setCalls] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
+    if (hostedDemo) return;
     api<{ logical_calls: number }>("/preview", {
       days,
       work_rounds: rounds,
@@ -170,14 +171,16 @@ export default function Studies({
             through to analysis.
           </p>
         </div>
-        <button
-          className="button primary"
-          aria-expanded={enrolling}
-          onClick={() => setEnrolling(!enrolling)}
-        >
-          <Icon name="plus" size={16} />
-          {enrolling ? "Close registration" : "Register a study"}
-        </button>
+        {!hostedDemo && (
+          <button
+            className="button primary"
+            aria-expanded={enrolling}
+            onClick={() => setEnrolling(!enrolling)}
+          >
+            <Icon name="plus" size={16} />
+            {enrolling ? "Close registration" : "Register a study"}
+          </button>
+        )}
       </div>
       <div className="protocol-diagram">
         <div className="protocol-lead">
@@ -413,12 +416,14 @@ export default function Studies({
               </select>
             </label>
           )}
-          <button
-            className="button secondary"
-            onClick={() => setRevision((r) => r + 1)}
-          >
-            Refresh results
-          </button>
+          {!hostedDemo && (
+            <button
+              className="button secondary"
+              onClick={() => setRevision((r) => r + 1)}
+            >
+              Refresh results
+            </button>
+          )}
         </div>
         {!study ? (
           <p>
@@ -513,7 +518,7 @@ export default function Studies({
               <code>Protocol {study.id.slice(0, 12)}</code>
               <a
                 className="button secondary"
-                href={"/api/studies/" + study.id + "/export"}
+                href={downloadPath("/studies/" + study.id + "/export")}
                 download
               >
                 <Icon name="download" size={15} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, downloadPath } from "./api";
 import type { Arm, Run } from "./types";
 import { ARMS, money, nice, num } from "./types";
 import { CooperationGraph, MetricsView } from "./Inspector";
@@ -224,7 +224,7 @@ export default function Compare({ run, runs }: { run: Run; runs: Run[] }) {
             </div>
             <a
               className="text-button"
-              href={`/api/runs/${run.id}/export/metrics.csv`}
+              href={downloadPath(`/runs/${run.id}/export/metrics.csv`)}
               download
             >
               <Icon name="download" size={14} /> CSV

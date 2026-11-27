@@ -3,9 +3,11 @@ import {
   api,
   controlRun,
   createRun,
+  downloadPath,
   getEvents,
   getRun,
   getRuns,
+  hostedDemo,
   replayRun,
 } from "./api";
 import type { Agent, Config, LabEvent, Metrics, Run, State } from "./types";
@@ -60,7 +62,7 @@ export default function App() {
   } | null>(null);
   const [replaySeq, setReplaySeq] = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
-  const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replaySpeed, setReplaySpeed] = useState(hostedDemo ? 4 : 1);
   const [about, setAbout] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,7 +124,7 @@ export default function App() {
   }, [selectRun]);
 
   useEffect(() => {
-    if (!run?.id) return;
+    if (!run?.id || hostedDemo) return;
     const id = run.id;
     const source = new EventSource(
       `/api/runs/${id}/stream?after=${run.seq ?? 0}`,
@@ -328,7 +330,7 @@ export default function App() {
         </button>
         <div className="rail-nav">
           {[
-            { id: "lab", icon: "grid", label: "Live lab" },
+            { id: "lab", icon: "grid", label: hostedDemo ? "Lab" : "Live lab" },
             { id: "compare", icon: "chart", label: "Compare outcomes" },
             { id: "studies", icon: "board", label: "Study registry" },
             {
@@ -336,17 +338,19 @@ export default function App() {
               icon: "settings",
               label: "Experiment controls",
             },
-          ].map((n) => (
-            <button
-              key={n.id}
-              className={view === n.id ? "active" : ""}
-              title={n.label}
-              aria-label={n.label}
-              onClick={() => setView(n.id as View)}
-            >
-              <Icon name={n.icon} size={21} />
-            </button>
-          ))}
+          ]
+            .filter((n) => !hostedDemo || n.id !== "experiment")
+            .map((n) => (
+              <button
+                key={n.id}
+                className={view === n.id ? "active" : ""}
+                title={n.label}
+                aria-label={n.label}
+                onClick={() => setView(n.id as View)}
+              >
+                <Icon name={n.icon} size={21} />
+              </button>
+            ))}
         </div>
         <button
           className="rail-about"
@@ -368,7 +372,7 @@ export default function App() {
               className={view === "lab" ? "active" : ""}
               onClick={() => setView("lab")}
             >
-              Live lab
+              {hostedDemo ? "Lab" : "Live lab"}
             </button>
             <button
               className={view === "compare" ? "active" : ""}
@@ -376,12 +380,14 @@ export default function App() {
             >
               Compare
             </button>
-            <button
-              className={view === "experiment" ? "active" : ""}
-              onClick={() => setView("experiment")}
-            >
-              Experiment
-            </button>
+            {!hostedDemo && (
+              <button
+                className={view === "experiment" ? "active" : ""}
+                onClick={() => setView("experiment")}
+              >
+                Experiment
+              </button>
+            )}
             <button
               className={view === "studies" ? "active" : ""}
               onClick={() => setView("studies")}
@@ -391,8 +397,14 @@ export default function App() {
           </nav>
           <div className="topbar-end">
             <span className="connection">
-              <span className={`status-dot ${connected ? "" : "sleep"}`} />
-              {connected ? "Engine connected" : "Connecting"}
+              <span
+                className={`status-dot ${connected || hostedDemo ? "" : "sleep"}`}
+              />
+              {hostedDemo
+                ? "Hosted replay"
+                : connected
+                  ? "Engine connected"
+                  : "Connecting"}
             </span>
             <button
               className="profile-chip"
@@ -404,6 +416,16 @@ export default function App() {
           </div>
         </header>
         <main>
+          {hostedDemo && (
+            <div className="inline-note hosted-note" role="note">
+              <Icon name="info" size={16} />
+              <span>
+                <strong>Hosted demo.</strong> Replay a synthetic experiment,
+                inspect evidence and compare the teams. New runs use the private
+                research workspace.
+              </span>
+            </div>
+          )}
           {loading && !run ? (
             <div className="loading-screen">
               <div className="loading-creatures">
@@ -479,7 +501,9 @@ export default function App() {
                           {exports.map((e) => (
                             <a
                               key={e.kind}
-                              href={`/api/runs/${run.id}/export/${e.kind}`}
+                              href={downloadPath(
+                                `/runs/${run.id}/export/${e.kind}`,
+                              )}
                               download
                               onClick={() => setExportOpen(false)}
                             >
@@ -528,71 +552,100 @@ export default function App() {
                         {live ? run.config.model : "Deterministic mock"}{" "}
                         <span>· seed {run.config.seed}</span>
                       </span>
-                      <button
-                        className="icon-button"
-                        title="Clone configuration to a new experiment"
-                        aria-label="Clone run"
-                        disabled={busy}
-                        onClick={clone}
-                      >
-                        <Icon name="copy" size={16} />
-                      </button>
-                      <button
-                        className="icon-button"
-                        title="Reset demo by creating a fresh offline run; history is kept"
-                        aria-label="Reset demo"
-                        disabled={busy}
-                        onClick={() =>
-                          newRun({
-                            ...DEFAULT_CONFIG,
-                            seed: run.config.seed,
-                          }).catch((e) => setError(e.message))
-                        }
-                      >
-                        <Icon name="reset" size={16} />
-                      </button>
-                      <button
-                        className="icon-button stop-button"
-                        aria-label="Stop experiment"
-                        title={
-                          terminal
-                            ? "Experiment already ended"
-                            : "Stop this experiment"
-                        }
-                        disabled={busy || terminal || run.status === "ready"}
-                        onClick={() => command("stop")}
-                      >
-                        <Icon name="stop" size={16} />
-                      </button>
-                      <button
-                        className="button primary play-control"
-                        disabled={busy || (!running && !canStart)}
-                        onClick={() =>
-                          command(
-                            running
-                              ? "pause"
-                              : run.status !== "ready"
-                                ? "resume"
-                                : "start",
-                          )
-                        }
-                        title={
-                          terminal
-                            ? "Create or clone a run to start again"
-                            : undefined
-                        }
-                      >
-                        <Icon name={running ? "pause" : "play"} size={16} />
-                        {busy
-                          ? "Working…"
-                          : running
-                            ? "Pause"
-                            : terminal
-                              ? "Run finished"
-                              : run.status === "ready"
-                                ? "Start experiment"
-                                : "Resume"}
-                      </button>
+                      {hostedDemo ? (
+                        <button
+                          className="button primary play-control"
+                          onClick={() => {
+                            if (replayPlaying) {
+                              setReplayPlaying(false);
+                            } else {
+                              if (!replay || replaySeq >= (run.seq ?? 0))
+                                onReplay(0);
+                              setReplayPlaying(true);
+                            }
+                          }}
+                        >
+                          <Icon
+                            name={replayPlaying ? "pause" : "play"}
+                            size={16}
+                          />
+                          {replayPlaying
+                            ? "Pause replay"
+                            : replay
+                              ? "Play replay"
+                              : "Watch experiment"}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            className="icon-button"
+                            title="Clone configuration to a new experiment"
+                            aria-label="Clone run"
+                            disabled={busy}
+                            onClick={clone}
+                          >
+                            <Icon name="copy" size={16} />
+                          </button>
+                          <button
+                            className="icon-button"
+                            title="Reset demo by creating a fresh offline run; history is kept"
+                            aria-label="Reset demo"
+                            disabled={busy}
+                            onClick={() =>
+                              newRun({
+                                ...DEFAULT_CONFIG,
+                                seed: run.config.seed,
+                              }).catch((e) => setError(e.message))
+                            }
+                          >
+                            <Icon name="reset" size={16} />
+                          </button>
+                          <button
+                            className="icon-button stop-button"
+                            aria-label="Stop experiment"
+                            title={
+                              terminal
+                                ? "Experiment already ended"
+                                : "Stop this experiment"
+                            }
+                            disabled={
+                              busy || terminal || run.status === "ready"
+                            }
+                            onClick={() => command("stop")}
+                          >
+                            <Icon name="stop" size={16} />
+                          </button>
+                          <button
+                            className="button primary play-control"
+                            disabled={busy || (!running && !canStart)}
+                            onClick={() =>
+                              command(
+                                running
+                                  ? "pause"
+                                  : run.status !== "ready"
+                                    ? "resume"
+                                    : "start",
+                              )
+                            }
+                            title={
+                              terminal
+                                ? "Create or clone a run to start again"
+                                : undefined
+                            }
+                          >
+                            <Icon name={running ? "pause" : "play"} size={16} />
+                            {busy
+                              ? "Working…"
+                              : running
+                                ? "Pause"
+                                : terminal
+                                  ? "Run finished"
+                                  : run.status === "ready"
+                                    ? "Start experiment"
+                                    : "Resume"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {(statusReason ||
@@ -696,11 +749,11 @@ export default function App() {
                     <div className="replay-banner">
                       <Icon name="replay" size={17} />
                       <span>
-                        Viewing recorded state at event #{replay.seq}. Live
-                        experiment controls remain separate.
+                        Viewing recorded state at event #{replay.seq}.
                       </span>
                       <button onClick={liveReturn}>
-                        Return to live <Icon name="arrow" size={14} />
+                        {hostedDemo ? "Return to results" : "Return to live"}{" "}
+                        <Icon name="arrow" size={14} />
                       </button>
                     </div>
                   )}
@@ -773,12 +826,14 @@ export default function App() {
                               : ""}
                           </p>
                         </div>
-                        <button
-                          aria-label="Open experiment design controls"
-                          onClick={() => setView("experiment")}
-                        >
-                          <Icon name="arrow" size={19} />
-                        </button>
+                        {!hostedDemo && (
+                          <button
+                            aria-label="Open experiment design controls"
+                            onClick={() => setView("experiment")}
+                          >
+                            <Icon name="arrow" size={19} />
+                          </button>
+                        )}
                       </div>
                       <div className="day-panel panel">
                         <div className="day-panel-heading">
@@ -786,27 +841,29 @@ export default function App() {
                             <span className="eyebrow">A DAY IN THE LAB</span>
                             <h3>Small routines. Persistent progress.</h3>
                           </div>
-                          <button
-                            className="text-button"
-                            disabled={
-                              busy ||
-                              run.config.scheduler_mode !== "virtual" ||
-                              running ||
-                              terminal
-                            }
-                            title={
-                              run.config.scheduler_mode !== "virtual"
-                                ? "Available only in virtual-time mode"
-                                : running
-                                  ? "Pause before advancing one day"
-                                  : terminal
-                                    ? "This run has ended"
-                                    : "Run until the next day boundary"
-                            }
-                            onClick={() => command("advance_day")}
-                          >
-                            Advance one day <Icon name="arrow" size={14} />
-                          </button>
+                          {!hostedDemo && (
+                            <button
+                              className="text-button"
+                              disabled={
+                                busy ||
+                                run.config.scheduler_mode !== "virtual" ||
+                                running ||
+                                terminal
+                              }
+                              title={
+                                run.config.scheduler_mode !== "virtual"
+                                  ? "Available only in virtual-time mode"
+                                  : running
+                                    ? "Pause before advancing one day"
+                                    : terminal
+                                      ? "This run has ended"
+                                      : "Run until the next day boundary"
+                              }
+                              onClick={() => command("advance_day")}
+                            >
+                              Advance one day <Icon name="arrow" size={14} />
+                            </button>
+                          )}
                         </div>
                         <div className="day-phases">
                           {phases.map((p, i) => (
@@ -959,7 +1016,13 @@ export default function App() {
                       })}
                     </div>
                     <div className="timeline-scrubber">
-                      <span>{replay ? `EVENT ${replaySeq}` : "LIVE EDGE"}</span>
+                      <span>
+                        {replay
+                          ? `EVENT ${replaySeq}`
+                          : hostedDemo
+                            ? "FINAL EVENT"
+                            : "LIVE EDGE"}
+                      </span>
                       <input
                         type="range"
                         min="0"

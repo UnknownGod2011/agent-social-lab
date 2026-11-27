@@ -4,6 +4,12 @@ A local laboratory for testing whether a non-task conversation changes the subse
 
 **Read the [research protocol and literature review](docs/RESEARCH_PROTOCOL.md)** for the hypotheses, choice of task, design, analysis, power planning and paper outline.
 
+## Hosted review build
+
+Open the [Vercel demo](https://beyond-task-talk-lab-preview.vercel.app) to watch a synthetic run, scrub the actual event ledger, inspect supplier scorecards, compare decisions, and download study data. Live runs and study registration use the private app described below. The [next study plan](docs/NEXT_STUDY.md) specifies the proposed transcript control, measurements, and evidence milestones.
+
+With the local dependencies installed and Vercel CLI signed in, run `.\scripts\deploy_preview.ps1` to build and repoint that URL. Add `-BuildOnly` to stage locally without publishing. The script creates a temporary database with credentials cleared and exports a fresh mock run into Vercel's static output. It uploads the generated pages and fixture only. The initial deployment was classified as production by the CLI when it created the project. Subsequent calls explicitly target Preview.
+
 ## Run locally
 
 Requirements: Windows PowerShell, Python 3.12 (`py -3.12`), and Node.js 20.19+ or 22.12+. From the project folder:

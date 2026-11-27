@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { hostedDemo } from "./api";
 import type { Agent, Arm, LabEvent, Run, State } from "./types";
 import { ARMS, COLORS, ROLES, money, nice, num } from "./types";
 import { Creature } from "./Office";
@@ -770,7 +771,7 @@ export default function Inspector({
                   Next →
                 </button>
                 <button className="button" onClick={onLive}>
-                  Return to live
+                  {hostedDemo ? "Return to results" : "Return to live"}
                 </button>
               </div>
             </div>

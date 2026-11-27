@@ -1,6 +1,31 @@
+/// <reference types="vite/client" />
 import type { Config, LabEvent, Metrics, Run, State } from "./types";
+
+export const hostedDemo = import.meta.env.MODE === "public";
+
+function demoPath(path: string) {
+  const [resource, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  if (resource === "/compare")
+    return `/demo/api/compare/${params.get("ids")}.json`;
+  if (resource.endsWith("/replay"))
+    return `/demo/api${resource}/${params.get("seq") ?? 0}.json`;
+  return `/demo/api${resource}.json`;
+}
+
+export function downloadPath(path: string) {
+  return hostedDemo
+    ? `/demo/api${path}${path.endsWith("/export") ? ".json" : ""}`
+    : `/api${path}`;
+}
+
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  if (hostedDemo && body !== undefined) {
+    throw new Error(
+      "The hosted demonstration contains recorded data. New runs use the research workspace.",
+    );
+  }
+  const response = await fetch(hostedDemo ? demoPath(path) : `/api${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers:
       body === undefined ? undefined : { "Content-Type": "application/json" },

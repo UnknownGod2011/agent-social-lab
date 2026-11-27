@@ -1,0 +1,33 @@
+async (page) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("http://127.0.0.1:8055/");
+  await page.getByText("Hosted demo.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Watch experiment" }).click();
+  await page.locator(".replay-banner").waitFor();
+  await page.locator(".run-actions").getByRole("button", { name: "Pause replay" }).click();
+  await page.locator(".replay-banner").getByRole("button", { name: "Return to results" }).click();
+  await page.getByRole("button", { name: "Message paths", exact: true }).click();
+  await page.locator(".path-observation button").first().click();
+  await page.locator(".replay-banner").waitFor();
+  await page.locator(".replay-banner").getByRole("button", { name: "Return to results" }).click();
+  await page.getByRole("tab", { name: "Goals", exact: true }).click();
+  await page.getByLabel("View from").selectOption("evaluator");
+  if (await page.locator(".evidence-grid td").count() !== 16) throw Error("Missing evaluator evidence");
+  await page.getByRole("navigation").getByRole("button", { name: "Compare", exact: true }).click();
+  await page.getByRole("heading", { name: "Post-break decision yield" }).waitFor();
+  const metricsUrl = await page.getByRole("link", { name: "CSV", exact: true }).getAttribute("href");
+  const metrics = await page.request.get(new URL(metricsUrl, page.url()).href);
+  if (!metrics.ok() || !(await metrics.text()).includes("decision_yield")) throw Error("Invalid metrics download");
+  await page.getByRole("navigation").getByRole("button", { name: "Studies", exact: true }).click();
+  const reportLink = page.getByRole("link", { name: "Download study JSON" });
+  await reportLink.waitFor();
+  const report = await page.request.get(new URL(await reportLink.getAttribute("href"), page.url()).href);
+  if (!report.ok() || (await report.json()).blocks[0].status !== "completed") throw Error("Invalid report download");
+  if (await page.getByRole("button", { name: "Register a study" }).count()) throw Error("Hosted registration is visible");
+  await page.setViewportSize({ width: 390, height: 844 });
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw Error("Mobile overflow");
+  if (errors.length) throw Error(errors.join("; "));
+  return { hostedReplay: "passed", scorecard: "passed", metricsDownload: "passed", studyDownload: "passed", mobile: "passed" };
+}
